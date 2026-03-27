@@ -350,6 +350,31 @@ a:hover {
   gap: 14px;
 }
 
+.trial-details-grid {
+  margin: 12px 0 0;
+}
+
+.evidence-callout {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #dbe3f0;
+  background: #f8fbff;
+}
+
+.evidence-label {
+  margin-bottom: 6px;
+  color: #38517d;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evidence-snippet {
+  color: #1f2937;
+}
+
 .multiline {
   white-space: pre-line;
 }

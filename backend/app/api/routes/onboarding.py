@@ -34,7 +34,7 @@ def complete_onboarding(payload: OnboardingCompleteRequest, db: Session = Depend
     state.current_step = payload.current_step or "completed"
     state.is_completed = payload.is_completed
     state.completed_at = utcnow() if payload.is_completed else None
-    state.last_health_check = run_health_check(db).model_dump()
+    state.last_health_check = run_health_check(db).model_dump(mode="json")
     db.commit()
     db.refresh(state)
     return state

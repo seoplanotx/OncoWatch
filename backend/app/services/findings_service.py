@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
@@ -11,15 +12,23 @@ from app.services.matching_service import MatchResult
 from app.utils.dates import utcnow
 
 
-def _finding_hash(record: ConnectorRecord) -> str:
-    payload = "|".join(
-        [
-            record.title,
-            record.source_url,
-            record.summary,
-            record.location_summary or "",
-            ",".join(sorted(record.tags)),
-        ]
+def _finding_hash(record: ConnectorRecord, match: MatchResult) -> str:
+    payload = json.dumps(
+        {
+            "title": record.title,
+            "source_url": record.source_url,
+            "summary": record.summary,
+            "location_summary": record.location_summary,
+            "tags": sorted(record.tags),
+            "gaps": record.gaps,
+            "evidence_label": record.evidence_label,
+            "evidence_snippet": record.evidence_snippet,
+            "normalized_summary": match.normalized_summary,
+            "normalized_facts": match.normalized_facts,
+            "record_payload": record.raw_payload,
+        },
+        sort_keys=True,
+        default=str,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -63,7 +72,7 @@ def upsert_finding(
     llm_model: str | None = None,
     llm_metadata: dict | None = None,
 ) -> tuple[Finding, str]:
-    content_hash = _finding_hash(record)
+    content_hash = _finding_hash(record, match)
     finding = session.scalar(
         select(Finding).where(
             Finding.profile_id == profile_id,
@@ -85,7 +94,7 @@ def upsert_finding(
             published_at=record.published_at,
             structured_tags=record.tags,
             raw_summary=record.summary,
-            normalized_summary=record.summary,
+            normalized_summary=match.normalized_summary or record.normalized_summary or record.summary,
             why_it_surfaced="\n".join(match.why_it_surfaced),
             why_it_may_not_fit="\n".join(match.why_it_may_not_fit),
             confidence=match.confidence,
@@ -94,7 +103,10 @@ def upsert_finding(
             status="new",
             location_summary=record.location_summary,
             matching_gaps=match.matching_gaps,
-            match_debug=match.debug,
+            match_debug={
+                **match.debug,
+                "normalized_facts": match.normalized_facts,
+            },
             content_hash=content_hash,
             llm_provider=llm_provider,
             llm_model=llm_model,
@@ -111,7 +123,7 @@ def upsert_finding(
         finding.source_url = record.source_url
         finding.structured_tags = record.tags
         finding.raw_summary = record.summary
-        finding.normalized_summary = record.summary
+        finding.normalized_summary = match.normalized_summary or record.normalized_summary or record.summary
         finding.why_it_surfaced = "\n".join(match.why_it_surfaced)
         finding.why_it_may_not_fit = "\n".join(match.why_it_may_not_fit)
         finding.confidence = match.confidence
@@ -119,7 +131,10 @@ def upsert_finding(
         finding.relevance_label = match.relevance_label
         finding.location_summary = record.location_summary
         finding.matching_gaps = match.matching_gaps
-        finding.match_debug = match.debug
+        finding.match_debug = {
+            **match.debug,
+            "normalized_facts": match.normalized_facts,
+        }
         finding.llm_provider = llm_provider
         finding.llm_model = llm_model
         finding.llm_metadata = llm_metadata or {}

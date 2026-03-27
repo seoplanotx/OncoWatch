@@ -57,12 +57,14 @@ oncowatch/
 
 ### Connector strategy
 The connector system is real and extensible. The MVP ships with:
-- `pubmed_literature` – live PubMed literature search
-- `demo_trials` – clean demo/starter clinical trial feed
+- `clinicaltrials_gov` – live ClinicalTrials.gov trial search
+- `pubmed_literature` – live PubMed literature search with abstract-aware evidence snippets
+- `demo_trials` – legacy demo trial feed kept for contributor compatibility
 - `demo_drug_updates` – clean demo/starter drug/safety feed
 - `demo_biomarker` – clean demo/starter biomarker feed
 
 The demo connectors are intentionally honest starter connectors so contributors can improve them without rewriting the pipeline.
+See `docs/connectors-and-matching.md` for connector behavior, normalization, scoring, and test details.
 
 ## End-user flow
 
@@ -101,13 +103,20 @@ npm install
 npm run dev
 ```
 
+### Backend tests
+
+```bash
+cd backend
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -v
+```
+
 That runs:
 - FastAPI backend on `127.0.0.1:17845`
 - Tauri desktop dev shell with the Vite UI
 
 ## Packaging strategy
 
-OncoWatch is packaged as a Tauri desktop installer. The frontend is bundled by Tauri, and the Python backend is compiled into a standalone sidecar binary using PyInstaller. Tauri bundles external sidecar binaries via `externalBin`, which keeps the backend invisible to the end user and avoids any separate backend startup step. citeturn306174search0turn491430search1turn491430search2
+OncoWatch is packaged as a Tauri desktop installer. The frontend is bundled by Tauri, and the Python backend is compiled into a standalone sidecar binary using PyInstaller. Tauri bundles external sidecar binaries via `externalBin`, which keeps the backend invisible to the end user and avoids any separate backend startup step.
 
 ### Build steps
 
@@ -146,7 +155,7 @@ ONCOWATCH_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
 ## OpenRouter setup
 
-The app explains OpenRouter in plain English, lets the user paste a key, tests the key, and fetches models. OpenRouter uses a Bearer token in the `Authorization` header, and its API base is `https://openrouter.ai/api/v1`. The models endpoint can be queried for available models. citeturn306174search2turn306174search7turn306174search20
+The app explains OpenRouter in plain English, lets the user paste a key, tests the key, and fetches models. OpenRouter uses a Bearer token in the `Authorization` header, and its API base is `https://openrouter.ai/api/v1`. The models endpoint can be queried for available models.
 
 ## PDF export
 
@@ -183,7 +192,7 @@ Default language stays cautious:
 
 ## Future roadmap
 
-- Real clinical trial connector using structured public APIs
+- Deeper trial feasibility filters for geography and status edge cases
 - Additional drug safety and label connectors
 - OS keychain integration for secrets
 - Multi-profile households

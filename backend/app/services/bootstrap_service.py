@@ -14,10 +14,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_SOURCE_CONFIGS = [
     {
         "category": "clinical_trials",
-        "name": "Clinical trials starter feed",
-        "connector_key": "demo_trials",
+        "name": "ClinicalTrials.gov trials",
+        "connector_key": "clinicaltrials_gov",
         "enabled": True,
-        "settings_json": {"notes": "Replace with real trial connector as the next contributor milestone."},
+        "settings_json": {
+            "page_size": 10,
+            "overall_statuses": [
+                "RECRUITING",
+                "NOT_YET_RECRUITING",
+                "ENROLLING_BY_INVITATION",
+                "ACTIVE_NOT_RECRUITING",
+            ],
+            "notes": "Live ClinicalTrials.gov connector with configurable result count and recruitment-status filters.",
+        },
     },
     {
         "category": "literature",
@@ -92,6 +101,8 @@ def _ensure_defaults(session: Session) -> None:
             )
         )
 
+    _migrate_trial_source_config(session)
+
     existing = {
         row.connector_key
         for row in session.scalars(select(SourceConfig)).all()
@@ -101,3 +112,25 @@ def _ensure_defaults(session: Session) -> None:
             session.add(SourceConfig(**config))
 
     session.commit()
+
+
+def _migrate_trial_source_config(session: Session) -> None:
+    legacy = session.scalar(select(SourceConfig).where(SourceConfig.connector_key == "demo_trials"))
+    current = session.scalar(select(SourceConfig).where(SourceConfig.connector_key == "clinicaltrials_gov"))
+    default_settings = DEFAULT_SOURCE_CONFIGS[0]["settings_json"]
+
+    if legacy is not None and current is None:
+        legacy.category = "clinical_trials"
+        legacy.name = "ClinicalTrials.gov trials"
+        legacy.connector_key = "clinicaltrials_gov"
+        legacy.settings_json = {**default_settings, **(legacy.settings_json or {})}
+        return
+
+    if current is not None:
+        current.category = "clinical_trials"
+        current.name = "ClinicalTrials.gov trials"
+        current.settings_json = {**default_settings, **(current.settings_json or {})}
+
+    if legacy is not None and current is not None:
+        legacy.enabled = False
+        legacy.name = "Legacy demo clinical trials feed"

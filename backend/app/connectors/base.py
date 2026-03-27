@@ -28,6 +28,7 @@ class ConnectorRecord:
     gaps: list[str] = field(default_factory=list)
     evidence_label: str | None = None
     evidence_snippet: str | None = None
+    normalized_summary: str | None = None
 
 
 class BaseConnector(ABC):

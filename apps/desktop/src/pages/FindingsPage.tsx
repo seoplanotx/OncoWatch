@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
+import { EvidenceCallout } from '../components/EvidenceCallout';
+import { TrialDetailsGrid } from '../components/TrialDetailsGrid';
 import { api } from '../lib/api';
 import type { Finding } from '../lib/types';
 
@@ -30,7 +32,19 @@ export function FindingsPage() {
     return items.filter((item) => {
       const matchesType = filter ? item.type === filter : true;
       const matchesQuery = query
-        ? `${item.title} ${item.normalized_summary || ''}`.toLowerCase().includes(query.toLowerCase())
+        ? [
+            item.title,
+            item.normalized_summary || '',
+            item.raw_summary || '',
+            item.primary_evidence_snippet || '',
+            item.trial_recruitment_status || '',
+            item.trial_sponsor || '',
+            item.trial_intervention_summary || '',
+            item.trial_phases.join(' ')
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(query.toLowerCase())
         : true;
       return matchesType && matchesQuery;
     });
@@ -92,6 +106,8 @@ export function FindingsPage() {
                 </div>
 
                 <p>{item.normalized_summary || item.raw_summary}</p>
+                <TrialDetailsGrid finding={item} />
+                <EvidenceCallout finding={item} />
 
                 <div className="detail-grid">
                   <div>

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
+import { EvidenceCallout } from '../components/EvidenceCallout';
 import { api } from '../lib/api';
 import type { Finding } from '../lib/types';
 
@@ -49,6 +50,7 @@ export function UpdatesPage() {
                   <Badge label={item.type} tone="info" />
                 </div>
                 <p>{item.normalized_summary || item.raw_summary}</p>
+                <EvidenceCallout finding={item} />
                 <div className="multiline">
                   <strong>Why it surfaced:</strong>
                   {' '}

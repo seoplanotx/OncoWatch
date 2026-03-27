@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
+import { EvidenceCallout } from '../components/EvidenceCallout';
+import { TrialDetailsGrid } from '../components/TrialDetailsGrid';
 import { api } from '../lib/api';
 import type { Dashboard } from '../lib/types';
 
@@ -115,6 +117,8 @@ export function DashboardPage() {
                   </div>
                 </div>
                 <p>{finding.normalized_summary || finding.raw_summary}</p>
+                <TrialDetailsGrid finding={finding} />
+                <EvidenceCallout finding={finding} />
               </article>
             ))}
           </div>

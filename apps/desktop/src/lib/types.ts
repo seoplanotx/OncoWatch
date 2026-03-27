@@ -132,6 +132,12 @@ export type Finding = {
   llm_model?: string | null;
   llm_metadata: Record<string, unknown>;
   evidence_items: FindingEvidence[];
+  primary_evidence_label?: string | null;
+  primary_evidence_snippet?: string | null;
+  trial_recruitment_status?: string | null;
+  trial_phases: string[];
+  trial_sponsor?: string | null;
+  trial_intervention_summary?: string | null;
   created_at: string;
   updated_at: string;
 };

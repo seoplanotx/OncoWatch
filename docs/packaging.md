@@ -21,7 +21,7 @@ The React/Vite build is bundled into the Tauri application.
 
 ## Why sidecar packaging
 
-Tauri supports bundling external binaries using `externalBin`, which is the cleanest way to ship a non-Rust backend alongside the UI. The app can then spawn the backend as a local child process without exposing backend startup to the end user. citeturn306174search0turn491430search1turn491430search2
+Tauri supports bundling external binaries using `externalBin`, which is the cleanest way to ship a non-Rust backend alongside the UI. The app can then spawn the backend as a local child process without exposing backend startup to the end user.
 
 ## Build flow
 
@@ -43,4 +43,4 @@ Tauri supports bundling external binaries using `externalBin`, which is the clea
 
 ## Update strategy
 
-Not included in MVP. Tauri’s updater plugin can be layered in later without changing the app’s local-first storage design. citeturn491430search6
+Not included in MVP. Tauri’s updater plugin can be layered in later without changing the app’s local-first storage design.

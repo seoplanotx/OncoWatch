@@ -46,6 +46,7 @@ export function OnboardingWizard({ onCompleted }: Props) {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [demoProfile, setDemoProfile] = useState(false);
   const [testMessage, setTestMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function OnboardingWizard({ onCompleted }: Props) {
   );
 
   async function saveProfile(tempProfile: PatientProfile) {
+    setErrorMessage('');
     setProfile(tempProfile);
     setStep(2);
   }
@@ -101,17 +103,20 @@ export function OnboardingWizard({ onCompleted }: Props) {
   }
 
   async function runHealth() {
+    setErrorMessage('');
     setBusy(true);
     try {
       const result = await api.getHealth();
       setHealth(result);
-      setStep(5);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not run the health check.');
     } finally {
       setBusy(false);
     }
   }
 
   async function finalize() {
+    setErrorMessage('');
     setBusy(true);
     try {
       let activeProfileId: number | undefined;
@@ -154,6 +159,8 @@ export function OnboardingWizard({ onCompleted }: Props) {
       });
 
       await onCompleted();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not finish setup.');
     } finally {
       setBusy(false);
     }
@@ -359,6 +366,7 @@ export function OnboardingWizard({ onCompleted }: Props) {
               <button className="primary-button" disabled={busy} onClick={runHealth}>
                 {busy ? 'Running checks…' : 'Run health check'}
               </button>
+              {errorMessage && <div className="callout">{errorMessage}</div>}
               {health && (
                 <div className="health-grid">
                   {health.items.map((item) => (
@@ -389,6 +397,7 @@ export function OnboardingWizard({ onCompleted }: Props) {
               <p>OncoWatch is ready on this computer.</p>
               <p>Next scheduled run: {settings.daily_run_time} each day.</p>
               <p>Reports will be saved in the local OncoWatch reports folder.</p>
+              {errorMessage && <div className="callout">{errorMessage}</div>}
               <button className="primary-button" disabled={busy} onClick={finalize}>
                 {busy ? 'Finishing…' : 'Open dashboard'}
               </button>

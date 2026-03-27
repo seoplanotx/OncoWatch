@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
+import { EvidenceCallout } from '../components/EvidenceCallout';
+import { TrialDetailsGrid } from '../components/TrialDetailsGrid';
 import { api } from '../lib/api';
 import type { Finding } from '../lib/types';
 
@@ -51,9 +53,10 @@ export function TrialMatchesPage() {
                     tone={item.relevance_label === 'High relevance' ? 'success' : 'info'}
                   />
                 </div>
+                <TrialDetailsGrid finding={item} />
                 <div className="detail-grid">
                   <div>
-                    <strong>Status / location</strong>
+                    <strong>Location</strong>
                     <div>{item.location_summary || 'Location details not stored.'}</div>
                   </div>
                   <div>
@@ -62,6 +65,7 @@ export function TrialMatchesPage() {
                   </div>
                 </div>
                 <p>{item.normalized_summary || item.raw_summary}</p>
+                <EvidenceCallout finding={item} />
                 <div className="multiline">
                   <strong>Gaps:</strong>
                   {' '}
