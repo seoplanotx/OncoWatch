@@ -1,0 +1,62 @@
+{
+  "items": [
+    {
+      "connector_key": "demo_trials",
+      "category": "clinical_trials",
+      "title": "Phase 1/2 study of EGFR-targeted combination therapy after osimertinib resistance in metastatic NSCLC",
+      "source_name": "OncoWatch Demo Trial Feed",
+      "source_url": "https://example.org/trials/demo-egfr-resistance",
+      "external_identifier": "DEMO-TRIAL-001",
+      "summary": "Recruiting multi-site study for metastatic non-small cell lung cancer with acquired resistance after osimertinib. Sites include Dallas and Houston. Biomarker enrichment includes EGFR-mutated disease and resistance pathway evaluation.",
+      "published_at": "2026-03-12T00:00:00+00:00",
+      "location_summary": "Dallas, TX; Houston, TX",
+      "tags": ["non-small cell lung cancer", "EGFR", "osimertinib resistance", "recruiting", "metastatic"],
+      "gaps": ["Eligibility depends on detailed resistance testing, performance status, and prior line-of-therapy review."],
+      "evidence_label": "Trial synopsis",
+      "evidence_snippet": "Recruiting study for metastatic NSCLC after osimertinib progression with biomarker-driven eligibility review."
+    },
+    {
+      "connector_key": "demo_trials",
+      "category": "clinical_trials",
+      "title": "Basket trial for MET amplification after targeted therapy progression",
+      "source_name": "OncoWatch Demo Trial Feed",
+      "source_url": "https://example.org/trials/demo-met-basket",
+      "external_identifier": "DEMO-TRIAL-002",
+      "summary": "Early-phase basket study for solid tumors with MET amplification or MET-driven resistance. Enrollment may require fresh tissue or circulating tumor DNA confirmation.",
+      "published_at": "2026-02-21T00:00:00+00:00",
+      "location_summary": "Chicago, IL; Remote prescreening available",
+      "tags": ["MET amplification", "basket trial", "solid tumor", "targeted therapy resistance"],
+      "gaps": ["Requires specific resistance confirmation and travel feasibility review."],
+      "evidence_label": "Eligibility note",
+      "evidence_snippet": "Fresh tissue or ctDNA confirmation may be required before formal screening."
+    },
+    {
+      "connector_key": "demo_drug_updates",
+      "category": "drug_updates",
+      "title": "Class safety reminder: monitor for interstitial lung disease symptoms during EGFR inhibitor therapy",
+      "source_name": "OncoWatch Demo Drug Feed",
+      "source_url": "https://example.org/drug-updates/demo-egfr-ild",
+      "external_identifier": "DEMO-DRUG-001",
+      "summary": "Demo safety update reminding clinicians and patients to discuss cough, shortness of breath, or unexplained fever promptly during EGFR-targeted therapy. This is a monitoring-oriented note, not a treatment instruction.",
+      "published_at": "2026-03-05T00:00:00+00:00",
+      "tags": ["EGFR", "safety", "label update", "lung toxicity"],
+      "gaps": ["Clinical interpretation depends on the exact drug, symptoms, and oncology context."],
+      "evidence_label": "Safety summary",
+      "evidence_snippet": "Respiratory symptoms during EGFR-targeted therapy should be reviewed urgently with the care team."
+    },
+    {
+      "connector_key": "demo_biomarker",
+      "category": "biomarker",
+      "title": "Review summary: C797S and MET amplification as common acquired resistance themes after osimertinib",
+      "source_name": "OncoWatch Demo Biomarker Feed",
+      "source_url": "https://example.org/biomarkers/demo-c797s-met",
+      "external_identifier": "DEMO-BIO-001",
+      "summary": "Demo biomarker review highlighting acquired EGFR C797S and MET amplification as resistance themes that may influence what is worth discussing with the oncology team after progression.",
+      "published_at": "2026-03-01T00:00:00+00:00",
+      "tags": ["EGFR C797S", "MET amplification", "osimertinib resistance", "ctDNA"],
+      "gaps": ["Needs real molecular testing context and clinician interpretation."],
+      "evidence_label": "Biomarker note",
+      "evidence_snippet": "Acquired resistance patterns often require updated tissue or liquid biopsy context."
+    }
+  ]
+}

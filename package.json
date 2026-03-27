@@ -1,0 +1,20 @@
+{
+  "name": "oncowatch",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first oncology monitoring desktop app",
+  "workspaces": [
+    "apps/desktop"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev:backend\" \"npm run dev:desktop\"",
+    "dev:backend": "cd backend && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 17845",
+    "dev:desktop": "npm --workspace apps/desktop run tauri dev",
+    "build:backend-sidecar": "python scripts/build_backend_sidecar.py",
+    "build:desktop": "npm run build:backend-sidecar && npm --workspace apps/desktop run tauri build",
+    "lint": "npm --workspace apps/desktop run lint"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

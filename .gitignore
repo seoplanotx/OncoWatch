@@ -1,0 +1,21 @@
+.DS_Store
+
+# JavaScript dependencies and build outputs
+node_modules/
+dist/
+build/
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Local environment and runtime data
+.env
+.env.*
+*.log
+*.sqlite3
+*.db
