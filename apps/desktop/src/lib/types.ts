@@ -156,12 +156,51 @@ export type MonitoringRun = {
   error_text?: string | null;
 };
 
+export type BriefingFindingSection = {
+  key: string;
+  title: string;
+  description: string;
+  empty_message: string;
+  count: number;
+  items: Finding[];
+};
+
+export type BriefingBlocker = {
+  label: string;
+  finding_count: number;
+  examples: string[];
+};
+
+export type BriefingSnapshot = {
+  latest_run_started_at?: string | null;
+  latest_run_completed_at?: string | null;
+  new_count: number;
+  changed_count: number;
+  sections: BriefingFindingSection[];
+  blockers: BriefingBlocker[];
+};
+
 export type Dashboard = {
   latest_run?: MonitoringRun | null;
   next_scheduled_run?: string | null;
   counts: Record<string, number>;
   recent_findings: Finding[];
+  briefing: BriefingSnapshot;
   disclaimer: string;
+};
+
+export type ReportSummary = {
+  finding_count?: number;
+  profile_name?: string;
+  report_title?: string;
+  report_type?: string;
+  generated_at?: string | null;
+  latest_run_started_at?: string | null;
+  latest_run_completed_at?: string | null;
+  new_count?: number;
+  changed_count?: number;
+  sections?: BriefingFindingSection[];
+  blockers?: BriefingBlocker[];
 };
 
 export type ReportExport = {
@@ -171,7 +210,7 @@ export type ReportExport = {
   status: string;
   file_path: string;
   generated_at: string;
-  summary_json: Record<string, unknown>;
+  summary_json: ReportSummary;
 };
 
 export type BootstrapInfo = {

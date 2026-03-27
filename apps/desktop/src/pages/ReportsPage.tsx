@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { BriefingBlockers } from '../components/BriefingBlockers';
+import { BriefingSection } from '../components/BriefingSection';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import { api } from '../lib/api';
-import type { ReportExport } from '../lib/types';
+import type { BriefingFindingSection, BriefingBlocker, ReportExport } from '../lib/types';
 
 export function ReportsPage() {
   const [reports, setReports] = useState<ReportExport[]>([]);
@@ -44,6 +46,22 @@ export function ReportsPage() {
     window.URL.revokeObjectURL(url);
   }
 
+  const latestReport = useMemo(() => reports[0], [reports]);
+  const latestSections = useMemo(
+    () =>
+      (Array.isArray(latestReport?.summary_json.sections)
+        ? latestReport?.summary_json.sections
+        : []) as BriefingFindingSection[],
+    [latestReport]
+  );
+  const latestBlockers = useMemo(
+    () =>
+      (Array.isArray(latestReport?.summary_json.blockers)
+        ? latestReport?.summary_json.blockers
+        : []) as BriefingBlocker[],
+    [latestReport]
+  );
+
   if (loading) return <div className="loading-block">Loading reports…</div>;
 
   return (
@@ -64,6 +82,46 @@ export function ReportsPage() {
             Generate full oncology review
           </button>
         </div>
+      </Card>
+
+      <Card title="Latest briefing preview">
+        {!latestReport ? (
+          <EmptyState title="No reports yet" message="Generate a report to preview the latest briefing structure." />
+        ) : latestSections.length === 0 ? (
+          <div className="stack">
+            <div className="muted">
+              The latest report does not include structured briefing metadata yet. Generate a new report to refresh the preview.
+            </div>
+            <div>
+              <strong>{latestReport.report_type === 'daily_summary' ? 'Daily Summary Report' : 'Full Oncology Review Report'}</strong>
+              <div className="muted">{new Date(latestReport.generated_at).toLocaleString()}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="page-stack">
+            <div className="briefing-preview-header">
+              <div>
+                <strong>{latestReport.summary_json.report_title || 'OncoWatch briefing'}</strong>
+                <div className="muted">
+                  {latestReport.summary_json.generated_at
+                    ? new Date(latestReport.summary_json.generated_at).toLocaleString()
+                    : new Date(latestReport.generated_at).toLocaleString()}
+                </div>
+              </div>
+              <div className="briefing-preview-metrics">
+                <span className="section-counter">{latestReport.summary_json.new_count || 0} new</span>
+                <span className="section-counter">{latestReport.summary_json.changed_count || 0} changed</span>
+                <span className="section-counter">{latestBlockers.length} blockers</span>
+              </div>
+            </div>
+
+            {latestSections.map((section) => (
+              <BriefingSection key={section.key} section={section} showWhy={false} />
+            ))}
+
+            <BriefingBlockers blockers={latestBlockers} />
+          </div>
+        )}
       </Card>
 
       <Card title="Report history">

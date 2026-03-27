@@ -1,12 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { Badge } from '../components/Badge';
+import { BriefingBlockers } from '../components/BriefingBlockers';
+import { BriefingSection } from '../components/BriefingSection';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
-import { EvidenceCallout } from '../components/EvidenceCallout';
-import { TrialDetailsGrid } from '../components/TrialDetailsGrid';
 import { api } from '../lib/api';
-import type { Dashboard } from '../lib/types';
+import type { BriefingFindingSection, Dashboard } from '../lib/types';
+
+function sectionByKey(sections: BriefingFindingSection[], key: string) {
+  return sections.find((section) => section.key === key);
+}
+
+function jumpToSection(anchorId: string) {
+  document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 export function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -31,6 +38,15 @@ export function DashboardPage() {
     await load();
   }
 
+  const newSection = useMemo(
+    () => (data ? sectionByKey(data.briefing.sections, 'new_findings') : undefined),
+    [data]
+  );
+  const changedSection = useMemo(
+    () => (data ? sectionByKey(data.briefing.sections, 'changed_findings') : undefined),
+    [data]
+  );
+
   if (loading) return <div className="loading-block">Loading dashboard…</div>;
   if (!data) return <EmptyState title="Dashboard unavailable" message="The dashboard could not be loaded." />;
 
@@ -39,7 +55,7 @@ export function DashboardPage() {
       <div className="page-header">
         <div>
           <h1>Dashboard</h1>
-          <p className="muted">Latest monitoring snapshot for this local profile.</p>
+          <p className="muted">Daily briefing view for the active local profile.</p>
         </div>
         <button className="primary-button" onClick={handleRunNow}>
           Run now
@@ -60,6 +76,55 @@ export function DashboardPage() {
           <div className="stat-value">{data.counts.trial_matches || 0}</div>
         </Card>
       </div>
+
+      <Card
+        title="What changed since last run?"
+        action={
+          <button className="secondary-button" onClick={() => (window.location.hash = '#/reports')}>
+            Open reports
+          </button>
+        }
+      >
+        <div className="briefing-hero">
+          <div className="briefing-copy">
+            <div className="eyebrow">Daily briefing</div>
+            <h2>Scan what is new, then what materially changed.</h2>
+            <p className="muted">
+              {data.briefing.latest_run_completed_at
+                ? `Latest completed run: ${new Date(data.briefing.latest_run_completed_at).toLocaleString()}`
+                : data.latest_run
+                ? `Latest run started: ${new Date(data.latest_run.started_at).toLocaleString()}`
+                : 'Run monitoring to populate the first briefing.'}
+            </p>
+          </div>
+          <div className="briefing-metrics">
+            <div className="briefing-metric">
+              <span className="briefing-metric-label">New</span>
+              <strong>{data.briefing.new_count}</strong>
+            </div>
+            <div className="briefing-metric">
+              <span className="briefing-metric-label">Changed</span>
+              <strong>{data.briefing.changed_count}</strong>
+            </div>
+            <div className="briefing-metric">
+              <span className="briefing-metric-label">Blockers</span>
+              <strong>{data.briefing.blockers.length}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="button-row">
+          <button className="secondary-button" onClick={() => jumpToSection('dashboard-new-findings')}>
+            View new findings
+          </button>
+          <button className="secondary-button" onClick={() => jumpToSection('dashboard-changed-findings')}>
+            View changed findings
+          </button>
+          <button className="secondary-button" onClick={() => jumpToSection('dashboard-blockers')}>
+            View blockers
+          </button>
+        </div>
+      </Card>
 
       <Card title="Run status">
         {data.latest_run ? (
@@ -86,44 +151,23 @@ export function DashboardPage() {
         )}
       </Card>
 
-      <Card title="Recent surfaced items">
-        {data.recent_findings.length === 0 ? (
+      {data.briefing.sections.map((section) => (
+        <BriefingSection
+          key={section.key}
+          section={section}
+          anchorId={`dashboard-${section.key.replace(/_/g, '-')}`}
+        />
+      ))}
+
+      <div id="dashboard-blockers">
+        <BriefingBlockers blockers={data.briefing.blockers} />
+      </div>
+
+      {data.recent_findings.length === 0 && !newSection?.items.length && !changedSection?.items.length && (
+        <Card title="Recent surfaced items">
           <EmptyState title="No findings stored" message="Once a run completes, findings will appear here." />
-        ) : (
-          <div className="finding-list">
-            {data.recent_findings.map((finding) => (
-              <article key={finding.id} className="finding-item">
-                <div className="finding-topline">
-                  <div>
-                    <strong>{finding.title}</strong>
-                    <div className="muted">
-                      {finding.source_name} • {finding.type}
-                    </div>
-                  </div>
-                  <div className="badge-row">
-                    <Badge label={finding.status.toUpperCase()} tone={finding.status === 'new' ? 'info' : 'warning'} />
-                    <Badge
-                      label={finding.relevance_label}
-                      tone={
-                        finding.relevance_label === 'High relevance'
-                          ? 'success'
-                          : finding.relevance_label === 'Worth reviewing'
-                          ? 'info'
-                          : finding.relevance_label === 'Low confidence'
-                          ? 'warning'
-                          : 'danger'
-                      }
-                    />
-                  </div>
-                </div>
-                <p>{finding.normalized_summary || finding.raw_summary}</p>
-                <TrialDetailsGrid finding={finding} />
-                <EvidenceCallout finding={finding} />
-              </article>
-            ))}
-          </div>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }

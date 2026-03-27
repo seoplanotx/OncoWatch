@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.models.finding import Finding
 from app.models.run import MonitoringRun
 from app.schemas.run import DashboardResponse
-from app.services.findings_service import list_findings
+from app.services.findings_service import build_briefing_snapshot, list_findings, rank_findings_for_briefing
+from app.services.profile_service import get_active_profile
 from app.services.scheduler_service import next_run_time_iso
 
 
@@ -18,11 +19,17 @@ DISCLAIMER = (
 
 
 def get_dashboard(session: Session, profile_id: int | None = None) -> DashboardResponse:
-    latest_run = session.scalar(select(MonitoringRun).order_by(MonitoringRun.started_at.desc()))
+    active_profile = get_active_profile(session) if profile_id is None else None
+    effective_profile_id = profile_id if profile_id is not None else (active_profile.id if active_profile else None)
+
+    latest_run_query = select(MonitoringRun)
+    if effective_profile_id is not None:
+        latest_run_query = latest_run_query.where(MonitoringRun.profile_id == effective_profile_id)
+    latest_run = session.scalar(latest_run_query.order_by(MonitoringRun.started_at.desc()))
 
     base = select(Finding)
-    if profile_id is not None:
-        base = base.where(Finding.profile_id == profile_id)
+    if effective_profile_id is not None:
+        base = base.where(Finding.profile_id == effective_profile_id)
 
     total_findings = session.scalar(select(func.count()).select_from(base.subquery())) or 0
     new_count = session.scalar(select(func.count()).select_from(base.where(Finding.status == "new").subquery())) or 0
@@ -41,11 +48,14 @@ def get_dashboard(session: Session, profile_id: int | None = None) -> DashboardR
         "high_relevance": high_relevance,
         "trial_matches": trial_matches,
     }
-    recent_findings = list_findings(session, profile_id=profile_id)[:6]
+    findings = list_findings(session, profile_id=effective_profile_id)
+    briefing = build_briefing_snapshot(findings, latest_run=latest_run)
+    recent_findings = rank_findings_for_briefing(findings)[:6]
     return DashboardResponse(
         latest_run=latest_run,
         next_scheduled_run=next_run_time_iso(),
         counts=counts,
         recent_findings=recent_findings,
+        briefing=briefing,
         disclaimer=DISCLAIMER,
     )

@@ -1,6 +1,8 @@
+export type BadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
+
 type BadgeProps = {
   label: string;
-  tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info';
+  tone?: BadgeTone;
 };
 
 export function Badge({ label, tone = 'neutral' }: BadgeProps) {

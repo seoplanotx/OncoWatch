@@ -8,7 +8,7 @@ from app.connectors.base import ConnectorContext
 from app.connectors.registry import connector_registry
 from app.models.run import MonitoringRun
 from app.models.settings import SourceConfig
-from app.services.findings_service import upsert_finding
+from app.services.findings_service import find_existing_finding, upsert_finding
 from app.services.matching_service import evaluate
 from app.services.profile_service import get_active_profile, get_profile
 from app.utils.dates import utcnow
@@ -43,6 +43,8 @@ def run_monitoring(session: Session, profile_id: int | None = None, triggered_by
     new_count = 0
     changed_count = 0
     connector_summaries: list[dict] = []
+    new_finding_ids: list[int] = []
+    changed_finding_ids: list[int] = []
 
     for source in source_configs:
         connector = registry.get(source.connector_key)
@@ -59,8 +61,14 @@ def run_monitoring(session: Session, profile_id: int | None = None, triggered_by
             source.last_successful_sync_at = utcnow()
             source.last_error = None
             for record in records:
-                match = evaluate(profile, record, is_new=True)
-                _, state = upsert_finding(
+                existing = find_existing_finding(
+                    session,
+                    profile_id=profile.id,
+                    source_name=record.source_name,
+                    external_identifier=record.external_identifier,
+                )
+                match = evaluate(profile, record, is_new=existing is None)
+                finding, state = upsert_finding(
                     session,
                     profile_id=profile.id,
                     monitoring_run_id=run.id,
@@ -69,8 +77,10 @@ def run_monitoring(session: Session, profile_id: int | None = None, triggered_by
                 )
                 if state == "new":
                     new_count += 1
+                    new_finding_ids.append(finding.id)
                 elif state == "changed":
                     changed_count += 1
+                    changed_finding_ids.append(finding.id)
 
             connector_summaries.append(
                 {
@@ -94,7 +104,11 @@ def run_monitoring(session: Session, profile_id: int | None = None, triggered_by
     run.new_findings_count = new_count
     run.changed_findings_count = changed_count
     run.completed_at = utcnow()
-    run.summary_json = {"connectors": connector_summaries}
+    run.summary_json = {
+        "connectors": connector_summaries,
+        "new_finding_ids": new_finding_ids,
+        "changed_finding_ids": changed_finding_ids,
+    }
     run.status = "completed"
     session.commit()
     session.refresh(run)

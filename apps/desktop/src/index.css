@@ -167,6 +167,22 @@ a:hover {
   padding: 20px;
 }
 
+.section-counter {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.section-description {
+  margin: 0 0 16px;
+  color: #475569;
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button,
@@ -259,6 +275,67 @@ a:hover {
   color: #111827;
 }
 
+.briefing-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.briefing-copy h2 {
+  margin: 8px 0;
+  font-size: 1.6rem;
+}
+
+.eyebrow {
+  color: #1648d5;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.briefing-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.briefing-metric {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #dbe3f0;
+  background: linear-gradient(180deg, #fbfdff 0%, #f1f6ff 100%);
+}
+
+.briefing-metric-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #475569;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.briefing-metric strong {
+  font-size: 1.8rem;
+  color: #0f172a;
+}
+
+.briefing-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.briefing-preview-metrics {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .stack {
   display: grid;
   gap: 14px;
@@ -348,6 +425,26 @@ a:hover {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.blocker-list {
+  display: grid;
+  gap: 12px;
+}
+
+.blocker-item {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  background: #fbfcfe;
+}
+
+.blocker-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
 }
 
 .trial-details-grid {

@@ -85,3 +85,11 @@ class OnboardingFlowTests(unittest.TestCase):
             self.assertEqual(bootstrap.active_profile_id, profile.id)
             self.assertEqual(dashboard.counts["total_findings"], 0)
             self.assertEqual(dashboard.recent_findings, [])
+            self.assertEqual(dashboard.briefing.new_count, 0)
+            self.assertEqual(dashboard.briefing.changed_count, 0)
+            self.assertEqual([section.key for section in dashboard.briefing.sections], [
+                "new_findings",
+                "changed_findings",
+                "top_trial_matches",
+                "top_literature_updates",
+            ])
