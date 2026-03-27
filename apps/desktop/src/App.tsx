@@ -47,7 +47,7 @@ export default function App() {
 
   return (
     <HashRouter>
-      <Layout>
+      <Layout disclaimer={bootstrap.disclaimer}>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/profile" element={<ProfilePage />} />

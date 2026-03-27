@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
-import { EvidenceCallout } from '../components/EvidenceCallout';
+import { FindingSummaryCard } from '../components/FindingSummaryCard';
 import { api } from '../lib/api';
 import type { Finding } from '../lib/types';
 
@@ -30,38 +29,25 @@ export function UpdatesPage() {
     <div className="page-stack">
       <div className="page-header">
         <div>
+          <div className="eyebrow">Literature and updates</div>
           <h1>Research / Drug Updates</h1>
-          <p className="muted">Literature, drug, safety, and biomarker-related findings in one view.</p>
+          <p className="page-lede">Literature, drug, safety, and biomarker-related findings in one calmer feed with explicit source context.</p>
+        </div>
+        <div className="page-header-actions">
+          <span className="section-counter">{items.length} stored</span>
         </div>
       </div>
 
-      <Card title="Updates">
+      <Card
+        title="Updates"
+        description="These records keep the evidence excerpt and the reason each item was surfaced side by side."
+      >
         {items.length === 0 ? (
           <EmptyState title="No updates stored" message="Run monitoring to populate literature and drug-related items." />
         ) : (
           <div className="finding-list">
             {items.map((item) => (
-              <article className="finding-item" key={item.id}>
-                <div className="finding-topline">
-                  <div>
-                    <strong>{item.title}</strong>
-                    <div className="muted">{item.source_name}</div>
-                  </div>
-                  <Badge label={item.type} tone="info" />
-                </div>
-                <p>{item.normalized_summary || item.raw_summary}</p>
-                <EvidenceCallout finding={item} />
-                <div className="multiline">
-                  <strong>Why it surfaced:</strong>
-                  {' '}
-                  {item.why_it_surfaced || 'No structured rationale stored.'}
-                </div>
-                {item.source_url && (
-                  <a href={item.source_url} target="_blank" rel="noreferrer" className="source-link">
-                    Open source
-                  </a>
-                )}
-              </article>
+              <FindingSummaryCard key={item.id} finding={item} showWhy />
             ))}
           </div>
         )}

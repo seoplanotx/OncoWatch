@@ -71,7 +71,38 @@ export function OnboardingWizard({ onCompleted }: Props) {
   }, []);
 
   const steps = useMemo(
-    () => ['Welcome', 'Patient Profile', 'OpenRouter', 'Monitoring Preferences', 'Test Run', 'Complete'],
+    () => [
+      {
+        label: 'Welcome',
+        title: 'Set up a calmer local oncology briefing workspace.',
+        description: 'OncoWatch stays focused on structured monitoring, conservative language, and clinician review.'
+      },
+      {
+        label: 'Patient Profile',
+        title: 'Add the core facts that should guide matching.',
+        description: 'Only enter what you already know. Leaving uncertain fields blank is safer than filling them with guesses.'
+      },
+      {
+        label: 'OpenRouter',
+        title: 'Optionally connect a model provider for summaries.',
+        description: 'This is optional and affects explanation text only. It does not change the underlying matching logic.'
+      },
+      {
+        label: 'Monitoring Preferences',
+        title: 'Choose cadence, report format, and enabled sources.',
+        description: 'These settings shape the local daily workflow without changing the product’s conservative scope.'
+      },
+      {
+        label: 'Test Run',
+        title: 'Verify storage, enabled sources, and report generation.',
+        description: 'A quick health pass helps confirm the local environment is ready before the dashboard opens.'
+      },
+      {
+        label: 'Complete',
+        title: 'Finish setup and open the dashboard.',
+        description: 'Once complete, OncoWatch is ready to generate local daily briefings on this computer.'
+      }
+    ],
     []
   );
 
@@ -79,6 +110,20 @@ export function OnboardingWizard({ onCompleted }: Props) {
     setErrorMessage('');
     setProfile(tempProfile);
     setStep(2);
+  }
+
+  async function saveProviderAndContinue() {
+    if (apiKey.trim()) {
+      const saved = await api.saveProviderConfig({
+        provider_key: 'openrouter',
+        display_name: 'OpenRouter',
+        selected_model: selectedModel,
+        api_key: apiKey
+      });
+      setProviderState(saved);
+    }
+
+    setStep(3);
   }
 
   async function testOpenRouter() {
@@ -166,6 +211,9 @@ export function OnboardingWizard({ onCompleted }: Props) {
     }
   }
 
+  const currentStep = steps[step];
+  const progress = ((step + 1) / steps.length) * 100;
+
   return (
     <div className="onboarding-shell">
       <div className="onboarding-sidebar">
@@ -176,19 +224,51 @@ export function OnboardingWizard({ onCompleted }: Props) {
             <div className="muted">Set up local oncology monitoring</div>
           </div>
         </div>
+        <div className="onboarding-sidebar-copy">
+          <div className="eyebrow">Private setup</div>
+          <h1>Build a steady daily briefing workflow.</h1>
+          <p>
+            Profiles, reports, and provider settings stay on this computer. Findings are surfaced conservatively and still
+            need clinician review.
+          </p>
+        </div>
         <ol className="step-list">
-          {steps.map((label, index) => (
-            <li key={label} className={index === step ? 'step-item active' : 'step-item'}>
+          {steps.map((item, index) => (
+            <li key={item.label} className={index === step ? 'step-item active' : 'step-item'}>
               <span>{index + 1}</span>
-              <div>{label}</div>
+              <div>
+                <strong>{item.label}</strong>
+                <div>{item.description}</div>
+              </div>
             </li>
           ))}
         </ol>
+        <div className="onboarding-note">
+          <strong>Clinical review stays central.</strong>
+          <p>
+            OncoWatch can summarize public information and local profile context. It does not determine treatment or confirm
+            eligibility.
+          </p>
+        </div>
       </div>
 
       <div className="onboarding-content">
+        <div className="onboarding-progress">
+          <div>
+            <div className="eyebrow">Step {step + 1} of {steps.length}</div>
+            <h2>{currentStep.title}</h2>
+            <p className="muted">{currentStep.description}</p>
+          </div>
+          <div className="progress-track" aria-hidden="true">
+            <div className="progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+
         {step === 0 && (
-          <Card title="Welcome to OncoWatch">
+          <Card
+            title="Welcome to OncoWatch"
+            description="A local-first workspace for tracking public oncology information that may be worth discussing with a care team."
+          >
             <div className="stack">
               <p>
                 OncoWatch helps patients and families monitor oncology information that <strong>may be relevant</strong>
@@ -197,6 +277,20 @@ export function OnboardingWizard({ onCompleted }: Props) {
               <p>
                 It can help you keep up with clinical trials, literature, drug updates, and biomarker-related findings.
               </p>
+              <div className="mini-stats-grid onboarding-highlights">
+                <div className="mini-stat">
+                  <span className="mini-stat-label">Trials</span>
+                  <strong>Structured matching</strong>
+                </div>
+                <div className="mini-stat">
+                  <span className="mini-stat-label">Literature</span>
+                  <strong>Evidence excerpts</strong>
+                </div>
+                <div className="mini-stat">
+                  <span className="mini-stat-label">Reports</span>
+                  <strong>Local PDF briefings</strong>
+                </div>
+              </div>
               <div className="callout">
                 It does <strong>not</strong> determine treatment, confirm eligibility, or replace an oncology team.
               </div>
@@ -208,16 +302,19 @@ export function OnboardingWizard({ onCompleted }: Props) {
         )}
 
         {step === 1 && (
-          <Card title="Patient profile setup">
-            <p className="muted">
-              Enter the details you already know. Leave anything blank that you are unsure about.
-            </p>
+          <Card
+            title="Patient profile setup"
+            description="Enter the details you already know. Leave anything blank that you are unsure about."
+          >
             <ProfileForm initialValue={profile} onSave={saveProfile} submitLabel="Save and continue" />
           </Card>
         )}
 
         {step === 2 && (
-          <Card title="OpenRouter setup">
+          <Card
+            title="OpenRouter setup"
+            description="Optional provider access for summary and explanation text. The key is stored locally on this machine."
+          >
             <div className="stack">
               <p>
                 You will need an API key so OncoWatch can generate optional summaries and explanation text.
@@ -264,18 +361,7 @@ export function OnboardingWizard({ onCompleted }: Props) {
                 <button className="primary-button" onClick={testOpenRouter} disabled={busy}>
                   {busy ? 'Testing…' : 'Test API Key'}
                 </button>
-                <button className="secondary-button" onClick={async () => {
-                  if (apiKey.trim()) {
-                    const saved = await api.saveProviderConfig({
-                      provider_key: 'openrouter',
-                      display_name: 'OpenRouter',
-                      selected_model: selectedModel,
-                      api_key: apiKey
-                    });
-                    setProviderState(saved);
-                  }
-                  setStep(3);
-                }}>
+                <button className="secondary-button" onClick={saveProviderAndContinue}>
                   Continue
                 </button>
               </div>
@@ -286,7 +372,10 @@ export function OnboardingWizard({ onCompleted }: Props) {
         )}
 
         {step === 3 && (
-          <Card title="Monitoring preferences">
+          <Card
+            title="Monitoring preferences"
+            description="Choose the default daily cadence and keep only the source categories you want monitored."
+          >
             <div className="form-grid">
               <div className="field">
                 <label>Daily run time</label>
@@ -358,11 +447,11 @@ export function OnboardingWizard({ onCompleted }: Props) {
         )}
 
         {step === 4 && (
-          <Card title="Test run">
+          <Card
+            title="Test run"
+            description="This checks local storage, the database, enabled sources, PDF generation, and model setup if you entered a key."
+          >
             <div className="stack">
-              <p>
-                This checks local storage, the database, enabled sources, PDF generation, and model setup if you entered a key.
-              </p>
               <button className="primary-button" disabled={busy} onClick={runHealth}>
                 {busy ? 'Running checks…' : 'Run health check'}
               </button>
@@ -392,7 +481,10 @@ export function OnboardingWizard({ onCompleted }: Props) {
         )}
 
         {step === 5 && (
-          <Card title="Setup complete">
+          <Card
+            title="Setup complete"
+            description="The workspace is configured locally and ready to open the main dashboard."
+          >
             <div className="stack">
               <p>OncoWatch is ready on this computer.</p>
               <p>Next scheduled run: {settings.daily_run_time} each day.</p>

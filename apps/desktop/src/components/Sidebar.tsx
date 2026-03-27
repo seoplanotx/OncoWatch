@@ -1,37 +1,76 @@
 import { NavLink } from 'react-router-dom';
 
-const items = [
+const primaryItems = [
   { to: '/', label: 'Dashboard' },
-  { to: '/profile', label: 'Patient Profile' },
   { to: '/findings', label: 'Findings Feed' },
   { to: '/trials', label: 'Trial Matches' },
   { to: '/updates', label: 'Research / Drug Updates' },
-  { to: '/reports', label: 'Reports' },
+  { to: '/reports', label: 'Reports' }
+];
+
+const secondaryItems = [
+  { to: '/profile', label: 'Patient Profile' },
   { to: '/settings', label: 'Settings' }
 ];
 
 export function Sidebar() {
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">
-        <div className="brand-mark">O</div>
-        <div>
-          <strong>OncoWatch</strong>
-          <div className="muted">Local oncology monitoring</div>
+      <div className="sidebar-panel">
+        <div className="sidebar-brand">
+          <div className="brand-mark">O</div>
+          <div>
+            <strong>OncoWatch</strong>
+            <div className="muted">Calm local oncology monitoring</div>
+          </div>
+        </div>
+
+        <div className="sidebar-summary">
+          <div className="sidebar-summary-label">Workspace</div>
+          <p className="sidebar-summary-copy">
+            A private daily briefing surface for trials, literature, and structured follow-up questions.
+          </p>
+        </div>
+
+        <div className="sidebar-nav-group">
+          <div className="sidebar-section-label">Monitor</div>
+          <nav className="sidebar-nav">
+            {primaryItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+
+        <div className="sidebar-nav-group">
+          <div className="sidebar-section-label">Configure</div>
+          <nav className="sidebar-nav">
+            {secondaryItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+
+        <div className="sidebar-trust">
+          <div className="sidebar-trust-label">Trust guardrails</div>
+          <p className="sidebar-trust-copy">
+            Reports and provider credentials are stored locally. Findings are informational and still need clinician review.
+          </p>
         </div>
       </div>
-      <nav className="sidebar-nav">
-        {items.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
     </aside>
   );
 }

@@ -67,14 +67,15 @@ export function SettingsPage() {
     <div className="page-stack">
       <div className="page-header">
         <div>
+          <div className="eyebrow">Configuration</div>
           <h1>Settings</h1>
-          <p className="muted">Provider setup, scheduling, and local source controls.</p>
+          <p className="page-lede">Provider setup, scheduling, and local source controls for the desktop workspace.</p>
         </div>
       </div>
 
       {message && <div className="callout">{message}</div>}
 
-      <Card title="General settings">
+      <Card title="General settings" description="Adjust when OncoWatch runs and the default briefing format it generates.">
         <div className="form-grid">
           <div className="field">
             <label>Daily run time</label>
@@ -110,7 +111,7 @@ export function SettingsPage() {
         </button>
       </Card>
 
-      <Card title="OpenRouter">
+      <Card title="OpenRouter" description="Optional model access for summaries and explanation text. It is not used to determine treatment.">
         <div className="stack">
           <p className="muted">
             OpenRouter is optional. It is used only for summarization and explanation tasks, not for deciding treatment.
@@ -143,7 +144,7 @@ export function SettingsPage() {
         </div>
       </Card>
 
-      <Card title="Sources">
+      <Card title="Sources" description="Enable or disable connectors without changing the local-first storage model.">
         <div className="stack">
           {sources.map((source) => (
             <div className="toggle-row" key={source.id}>

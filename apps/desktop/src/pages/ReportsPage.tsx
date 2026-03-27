@@ -68,12 +68,13 @@ export function ReportsPage() {
     <div className="page-stack">
       <div className="page-header">
         <div>
+          <div className="eyebrow">Local reports</div>
           <h1>Reports</h1>
-          <p className="muted">Generate clinician-friendly PDF briefings locally.</p>
+          <p className="page-lede">Generate clinician-friendly PDF briefings locally and review the latest structured summary before downloading.</p>
         </div>
       </div>
 
-      <Card title="Generate report">
+      <Card title="Generate report" description="Reports are produced on this machine using the active local profile and stored findings.">
         <div className="button-row">
           <button className="primary-button" disabled={busy} onClick={() => generate('daily_summary')}>
             Generate daily summary
@@ -84,7 +85,7 @@ export function ReportsPage() {
         </div>
       </Card>
 
-      <Card title="Latest briefing preview">
+      <Card title="Latest briefing preview" description="A structured preview of the most recent PDF briefing output.">
         {!latestReport ? (
           <EmptyState title="No reports yet" message="Generate a report to preview the latest briefing structure." />
         ) : latestSections.length === 0 ? (
@@ -124,7 +125,7 @@ export function ReportsPage() {
         )}
       </Card>
 
-      <Card title="Report history">
+      <Card title="Report history" description="Recent locally generated PDFs and their saved locations.">
         {reports.length === 0 ? (
           <EmptyState title="No reports yet" message="Generate a report to start the local report history." />
         ) : (

@@ -12,8 +12,11 @@ type BriefingSectionProps = {
 export function BriefingSection({ section, anchorId, showWhy = true }: BriefingSectionProps) {
   return (
     <div id={anchorId}>
-      <Card title={section.title} action={<span className="section-counter">{section.count} total</span>}>
-        <p className="section-description">{section.description}</p>
+      <Card
+        title={section.title}
+        description={section.description}
+        action={<span className="section-counter">{section.count} total</span>}
+      >
         {section.items.length === 0 ? (
           <EmptyState title={section.title} message={section.empty_message} />
         ) : (

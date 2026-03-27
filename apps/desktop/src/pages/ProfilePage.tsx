@@ -36,12 +36,13 @@ export function ProfilePage() {
     <div className="page-stack">
       <div className="page-header">
         <div>
+          <div className="eyebrow">Profile context</div>
           <h1>Patient Profile</h1>
-          <p className="muted">This structured profile drives the rules-first matching engine.</p>
+          <p className="page-lede">This structured profile drives the local rules-first matching engine and shapes which findings are surfaced.</p>
         </div>
       </div>
 
-      <Card title="Profile editor">
+      <Card title="Profile editor" description="Add only the facts you are confident in. Leaving uncertain fields blank is safer than guessing.">
         {message && <div className="callout">{message}</div>}
         <ProfileForm initialValue={profile} onSave={handleSave} submitLabel={profile ? 'Save profile' : 'Create profile'} />
       </Card>

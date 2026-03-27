@@ -5,11 +5,7 @@ import { BriefingSection } from '../components/BriefingSection';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import { api } from '../lib/api';
-import type { BriefingFindingSection, Dashboard } from '../lib/types';
-
-function sectionByKey(sections: BriefingFindingSection[], key: string) {
-  return sections.find((section) => section.key === key);
-}
+import type { Dashboard } from '../lib/types';
 
 function jumpToSection(anchorId: string) {
   document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -38,14 +34,16 @@ export function DashboardPage() {
     await load();
   }
 
-  const newSection = useMemo(
-    () => (data ? sectionByKey(data.briefing.sections, 'new_findings') : undefined),
-    [data]
-  );
-  const changedSection = useMemo(
-    () => (data ? sectionByKey(data.briefing.sections, 'changed_findings') : undefined),
-    [data]
-  );
+  const latestRunLabel = useMemo(() => {
+    if (!data) return 'Run monitoring to populate the first briefing.';
+    if (data.briefing.latest_run_completed_at) {
+      return `Latest completed run: ${new Date(data.briefing.latest_run_completed_at).toLocaleString()}`;
+    }
+    if (data.latest_run) {
+      return `Latest run started: ${new Date(data.latest_run.started_at).toLocaleString()}`;
+    }
+    return 'Run monitoring to populate the first briefing.';
+  }, [data]);
 
   if (loading) return <div className="loading-block">Loading dashboard…</div>;
   if (!data) return <EmptyState title="Dashboard unavailable" message="The dashboard could not be loaded." />;
@@ -54,31 +52,36 @@ export function DashboardPage() {
     <div className="page-stack">
       <div className="page-header">
         <div>
+          <div className="eyebrow">Daily monitoring</div>
           <h1>Dashboard</h1>
-          <p className="muted">Daily briefing view for the active local profile.</p>
+          <p className="page-lede">Scan what is new, what changed, and where clinician review still needs extra context.</p>
         </div>
-        <button className="primary-button" onClick={handleRunNow}>
-          Run now
-        </button>
+        <div className="page-header-actions">
+          <button className="primary-button" onClick={handleRunNow}>
+            Run now
+          </button>
+        </div>
       </div>
 
       <div className="stats-grid">
-        <Card title="New findings">
+        <Card title="New findings" description="Since the last completed run." className="stat-card">
           <div className="stat-value">{data.counts.new || 0}</div>
         </Card>
-        <Card title="Changed findings">
+        <Card title="Changed findings" description="Existing items with meaningful updates." className="stat-card">
           <div className="stat-value">{data.counts.changed || 0}</div>
         </Card>
-        <Card title="High relevance">
+        <Card title="High relevance" description="Items currently surfaced as the strongest fit." className="stat-card">
           <div className="stat-value">{data.counts.high_relevance || 0}</div>
         </Card>
-        <Card title="Trial matches">
+        <Card title="Trial matches" description="Trial-oriented findings worth a closer review." className="stat-card">
           <div className="stat-value">{data.counts.trial_matches || 0}</div>
         </Card>
       </div>
 
       <Card
         title="What changed since last run?"
+        description={latestRunLabel}
+        className="hero-card"
         action={
           <button className="secondary-button" onClick={() => (window.location.hash = '#/reports')}>
             Open reports
@@ -88,14 +91,8 @@ export function DashboardPage() {
         <div className="briefing-hero">
           <div className="briefing-copy">
             <div className="eyebrow">Daily briefing</div>
-            <h2>Scan what is new, then what materially changed.</h2>
-            <p className="muted">
-              {data.briefing.latest_run_completed_at
-                ? `Latest completed run: ${new Date(data.briefing.latest_run_completed_at).toLocaleString()}`
-                : data.latest_run
-                ? `Latest run started: ${new Date(data.latest_run.started_at).toLocaleString()}`
-                : 'Run monitoring to populate the first briefing.'}
-            </p>
+            <h2>Start with the net-new items, then review changes that may affect follow-up questions.</h2>
+            <p className="muted">{data.disclaimer}</p>
           </div>
           <div className="briefing-metrics">
             <div className="briefing-metric">
@@ -113,7 +110,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div className="button-row">
+        <div className="button-row hero-actions">
           <button className="secondary-button" onClick={() => jumpToSection('dashboard-new-findings')}>
             View new findings
           </button>
@@ -126,48 +123,69 @@ export function DashboardPage() {
         </div>
       </Card>
 
-      <Card title="Run status">
-        {data.latest_run ? (
-          <div className="detail-grid">
-            <div>
-              <strong>Last run</strong>
-              <div>{new Date(data.latest_run.started_at).toLocaleString()}</div>
-            </div>
-            <div>
-              <strong>Status</strong>
-              <div>{data.latest_run.status}</div>
-            </div>
-            <div>
-              <strong>Triggered by</strong>
-              <div>{data.latest_run.triggered_by}</div>
-            </div>
-            <div>
-              <strong>Next scheduled run</strong>
-              <div>{data.next_scheduled_run ? new Date(data.next_scheduled_run).toLocaleString() : 'Not scheduled'}</div>
-            </div>
+      <div className="dashboard-layout">
+        <div className="dashboard-main-column">
+          {data.briefing.sections.map((section) => (
+            <BriefingSection
+              key={section.key}
+              section={section}
+              anchorId={`dashboard-${section.key.replace(/_/g, '-')}`}
+            />
+          ))}
+        </div>
+
+        <div className="dashboard-side-column">
+          <Card
+            title="Run status"
+            description="Monitoring cadence and the most recent execution details."
+            className="side-panel-card"
+          >
+            {data.latest_run ? (
+              <div className="detail-grid">
+                <div>
+                  <strong>Last run</strong>
+                  <div>{new Date(data.latest_run.started_at).toLocaleString()}</div>
+                </div>
+                <div>
+                  <strong>Status</strong>
+                  <div>{data.latest_run.status}</div>
+                </div>
+                <div>
+                  <strong>Triggered by</strong>
+                  <div>{data.latest_run.triggered_by}</div>
+                </div>
+                <div>
+                  <strong>Next scheduled run</strong>
+                  <div>{data.next_scheduled_run ? new Date(data.next_scheduled_run).toLocaleString() : 'Not scheduled'}</div>
+                </div>
+              </div>
+            ) : (
+              <EmptyState title="No runs yet" message="Use Run now to populate the first monitoring results." />
+            )}
+          </Card>
+
+          <div id="dashboard-blockers">
+            <BriefingBlockers blockers={data.briefing.blockers} />
           </div>
-        ) : (
-          <EmptyState title="No runs yet" message="Use Run now to populate the first monitoring results." />
-        )}
-      </Card>
 
-      {data.briefing.sections.map((section) => (
-        <BriefingSection
-          key={section.key}
-          section={section}
-          anchorId={`dashboard-${section.key.replace(/_/g, '-')}`}
-        />
-      ))}
-
-      <div id="dashboard-blockers">
-        <BriefingBlockers blockers={data.briefing.blockers} />
+          <Card title="Recent surfaced items" description="A quick glance at the latest stored records." className="side-panel-card">
+            {data.recent_findings.length === 0 ? (
+              <EmptyState title="No findings stored" message="Once a run completes, findings will appear here." />
+            ) : (
+              <div className="headline-list">
+                {data.recent_findings.slice(0, 5).map((item) => (
+                  <article className="headline-item" key={item.id}>
+                    <strong>{item.title}</strong>
+                    <div className="muted">
+                      {item.source_name} • {new Date(item.published_at || item.retrieved_at).toLocaleString()}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
-
-      {data.recent_findings.length === 0 && !newSection?.items.length && !changedSection?.items.length && (
-        <Card title="Recent surfaced items">
-          <EmptyState title="No findings stored" message="Once a run completes, findings will appear here." />
-        </Card>
-      )}
     </div>
   );
 }

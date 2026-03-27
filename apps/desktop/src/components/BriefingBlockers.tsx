@@ -8,7 +8,11 @@ type BriefingBlockersProps = {
 
 export function BriefingBlockers({ blockers }: BriefingBlockersProps) {
   return (
-    <Card title="Confidence blockers / missing info" action={<span className="section-counter">{blockers.length} tracked</span>}>
+    <Card
+      title="Confidence blockers / missing info"
+      description="These are the explicit reasons a finding may still need more profile context or clinician confirmation."
+      action={<span className="section-counter">{blockers.length} tracked</span>}
+    >
       {blockers.length === 0 ? (
         <EmptyState
           title="No explicit blockers"
