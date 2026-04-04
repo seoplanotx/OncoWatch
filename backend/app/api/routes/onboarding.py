@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -30,11 +30,19 @@ def complete_onboarding(payload: OnboardingCompleteRequest, db: Session = Depend
         state = OnboardingState()
         db.add(state)
 
+    health = run_health_check(db)
+    state.last_health_check = health.model_dump(mode="json")
+    if payload.is_completed and not health.overall_ok:
+        state.is_completed = False
+        state.current_step = "health_check"
+        state.completed_at = None
+        db.commit()
+        raise HTTPException(status_code=409, detail="Resolve blocking health check failures before finishing setup.")
+
     state.welcome_acknowledged = payload.welcome_acknowledged
     state.current_step = payload.current_step or "completed"
     state.is_completed = payload.is_completed
     state.completed_at = utcnow() if payload.is_completed else None
-    state.last_health_check = run_health_check(db).model_dump(mode="json")
     db.commit()
     db.refresh(state)
     return state

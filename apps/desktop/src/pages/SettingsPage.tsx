@@ -1,66 +1,73 @@
 import { useEffect, useState } from 'react';
 
 import { Card } from '../components/Card';
+import { PageErrorState } from '../components/PageErrorState';
 import { api } from '../lib/api';
-import type { AppSettings, ProviderConfig, SourceConfig } from '../lib/types';
+import { getErrorMessage } from '../lib/errors';
+import type { AppSettings, SourceConfig } from '../lib/types';
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [provider, setProvider] = useState<ProviderConfig | null>(null);
   const [sources, setSources] = useState<SourceConfig[]>([]);
-  const [apiKey, setApiKey] = useState('');
-  const [models, setModels] = useState<string[]>([]);
-  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
 
   async function load() {
-    const [settingsResult, providerResult, sourceResult, modelResult] = await Promise.all([
-      api.getSettings(),
-      api.getProviderConfig(),
-      api.getSources(),
-      api.getOpenRouterModels()
-    ]);
-    setSettings(settingsResult);
-    setProvider(providerResult);
-    setSources(sourceResult);
-    setModels(modelResult);
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const [settingsResult, sourceResult] = await Promise.all([api.getSettings(), api.getSources()]);
+      setSettings(settingsResult);
+      setSources(sourceResult);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, 'Could not load local settings.'));
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
-  if (!settings) return <div className="loading-block">Loading settings…</div>;
+  if (loading) return <div className="loading-block">Loading settings...</div>;
+  if (errorMessage && !settings) {
+    return <PageErrorState title="Settings unavailable" message={errorMessage} onRetry={load} />;
+  }
+  if (!settings) {
+    return <PageErrorState title="Settings unavailable" message="The local settings payload was empty." onRetry={load} />;
+  }
 
   async function saveGeneral() {
-    const saved = await api.updateSettings(settings);
-    setSettings(saved);
-    setMessage('Settings saved locally.');
-  }
-
-  async function saveProvider() {
-    const saved = await api.saveProviderConfig({
-      provider_key: 'openrouter',
-      display_name: 'OpenRouter',
-      selected_model: provider?.selected_model,
-      api_key: apiKey || undefined
-    });
-    setProvider(saved);
-    setMessage('Provider settings saved.');
-  }
-
-  async function testKey() {
-    if (!apiKey.trim()) {
-      setMessage('Paste an API key to test.');
-      return;
+    setBusy(true);
+    setErrorMessage('');
+    setNotice('');
+    try {
+      const saved = await api.updateSettings(settings);
+      setSettings(saved);
+      setNotice('Settings saved locally.');
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, 'Could not save local settings.'));
+    } finally {
+      setBusy(false);
     }
-    const result = await api.testOpenRouterKey({ api_key: apiKey, model: provider?.selected_model });
-    setMessage(result.message);
-    if (result.discovered_models.length) setModels(result.discovered_models);
   }
 
   async function saveSource(source: SourceConfig) {
-    const saved = await api.updateSource(source.id, { enabled: source.enabled, settings_json: source.settings_json });
-    setSources((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+    setBusy(true);
+    setErrorMessage('');
+    setNotice('');
+    try {
+      const saved = await api.updateSource(source.id, { enabled: source.enabled, settings_json: source.settings_json });
+      setSources((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+      setNotice(`${saved.name} updated locally.`);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, 'Could not update the selected source.'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -69,16 +76,22 @@ export function SettingsPage() {
         <div>
           <div className="eyebrow">Configuration</div>
           <h1>Settings</h1>
-          <p className="page-lede">Provider setup, scheduling, and local source controls for the desktop workspace.</p>
+          <p className="page-lede">
+            Adjust while-open monitoring, report defaults, and the real sources available in this release.
+          </p>
         </div>
       </div>
 
-      {message && <div className="callout">{message}</div>}
+      {notice && <div className="callout">{notice}</div>}
+      {errorMessage && <div className="callout callout-danger">{errorMessage}</div>}
 
-      <Card title="General settings" description="Adjust when OncoWatch runs and the default briefing format it generates.">
+      <Card
+        title="General settings"
+        description="Automatic runs are local and only happen while OncoWatch remains open on this Mac."
+      >
         <div className="form-grid">
           <div className="field">
-            <label>Daily run time</label>
+            <label>Automatic run time while open</label>
             <input
               type="time"
               value={settings.daily_run_time}
@@ -106,45 +119,20 @@ export function SettingsPage() {
             </select>
           </div>
         </div>
-        <button className="primary-button" onClick={saveGeneral}>
-          Save general settings
-        </button>
-      </Card>
-
-      <Card title="OpenRouter" description="Optional model access for summaries and explanation text. It is not used to determine treatment.">
-        <div className="stack">
-          <p className="muted">
-            OpenRouter is optional. It is used only for summarization and explanation tasks, not for deciding treatment.
-          </p>
-          <div className="field">
-            <label>API key</label>
-            <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Paste new API key to update" />
-          </div>
-          <div className="field">
-            <label>Model</label>
-            <select
-              value={provider?.selected_model || models[0] || ''}
-              onChange={(e) => setProvider((current) => ({ ...(current || { provider_key: 'openrouter', display_name: 'OpenRouter', is_configured: false }), selected_model: e.target.value }))}
-            >
-              {models.map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="button-row">
-            <button className="secondary-button" onClick={testKey}>
-              Test API key
-            </button>
-            <button className="primary-button" onClick={saveProvider}>
-              Save provider settings
-            </button>
-          </div>
+        <div className="button-row">
+          <button className="primary-button" onClick={saveGeneral} disabled={busy}>
+            Save general settings
+          </button>
+          <button className="secondary-button" onClick={() => (window.location.hash = '#/support')}>
+            Open support details
+          </button>
         </div>
       </Card>
 
-      <Card title="Sources" description="Enable or disable connectors without changing the local-first storage model.">
+      <Card
+        title="Real sources"
+        description="This public release keeps the source list honest: ClinicalTrials.gov and PubMed only."
+      >
         <div className="stack">
           {sources.map((source) => (
             <div className="toggle-row" key={source.id}>
@@ -163,7 +151,7 @@ export function SettingsPage() {
                   <div className="muted">{source.connector_key}</div>
                 </div>
               </label>
-              <button className="ghost-button" onClick={() => saveSource(source)}>
+              <button className="ghost-button" onClick={() => void saveSource(source)} disabled={busy}>
                 Save
               </button>
             </div>

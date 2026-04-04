@@ -6,8 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
-from app.models import SourceConfig
-from app.services.bootstrap_service import _migrate_trial_source_config
+from app.models import AppSettings, SourceConfig
+from app.services.bootstrap_service import _ensure_defaults, _migrate_trial_source_config
 
 
 class BootstrapServiceTests(unittest.TestCase):
@@ -66,3 +66,13 @@ class BootstrapServiceTests(unittest.TestCase):
             self.assertFalse(legacy.enabled)
             self.assertEqual(legacy.connector_key, "demo_trials")
             self.assertEqual(legacy.name, "Legacy demo clinical trials feed")
+
+    def test_public_release_defaults_only_create_real_sources(self) -> None:
+        with self.session_factory() as session:
+            _ensure_defaults(session)
+
+            settings = session.query(AppSettings).one()
+            sources = session.query(SourceConfig).order_by(SourceConfig.connector_key).all()
+
+            self.assertEqual(settings.enabled_source_categories, ["clinical_trials", "literature"])
+            self.assertEqual([source.connector_key for source in sources], ["clinicaltrials_gov", "pubmed_literature"])

@@ -32,6 +32,12 @@ The backend uses platform-appropriate user directories and creates:
 ### Logs
 - operational logs for debugging and contributor support
 
+## Public release notes
+
+- the About / Support page exposes the local data, reports, logs, and config paths
+- automatic runs only happen while the desktop app is open
+- the public release assumes consumer local-first storage, not HIPAA-hosted infrastructure
+
 ## Path shape used by the app
 
 The code centralizes paths in `backend/app/core/paths.py`.

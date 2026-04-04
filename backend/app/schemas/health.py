@@ -10,6 +10,8 @@ class HealthCheckItem(BaseModel):
     label: str
     ok: bool
     message: str
+    severity: str = "blocking"
+    blocking: bool = True
 
 
 class HealthCheckResponse(BaseModel):

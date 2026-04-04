@@ -8,25 +8,25 @@
 
 ## What this MVP includes
 
-- Tauri desktop shell for Mac and Windows packaging
+- Tauri desktop shell for macOS-first packaging
 - React + TypeScript desktop UI
 - Local FastAPI service with SQLite persistence
 - First-run onboarding wizard
 - Structured patient profile management
-- Source connector abstraction with real and demo connectors
-- Local scheduler for daily runs
+- Real ClinicalTrials.gov and PubMed connectors for the public release
+- Local scheduling while the app is open
 - Deterministic matching and scoring pipeline
 - Source-backed findings feed and trial-focused view
 - Local PDF export with report history
-- OpenRouter setup, validation, and model selection in-app
-- Demo profile + demo findings for contributors and first-time users
+- About / Support view with local storage paths and recovery steps
 
 ## Core product principles
 
 - **Local-first**: patient data stays local by default
 - **Non-technical user first**: no terminal required for end users
-- **Rules-first, LLM-second**: deterministic filtering before summarization
-- **Auditability**: every surfaced item stores source, dates, rationale, cautions, score, and model metadata when used
+- **Rules-first**: deterministic filtering and ranking drive the product
+- **Auditability**: every surfaced item stores source, dates, rationale, cautions, and score
+- **Truthful scope**: the public release only claims what is real today
 - **Open-source friendly**: clean folder structure, readable services, extensible connectors
 
 ## Repo layout
@@ -56,14 +56,11 @@ oncowatch/
 - **Secrets**: encrypted locally at rest with a generated machine-local key file
 
 ### Connector strategy
-The connector system is real and extensible. The MVP ships with:
+The public release ships with:
 - `clinicaltrials_gov` – live ClinicalTrials.gov trial search
 - `pubmed_literature` – live PubMed literature search with abstract-aware evidence snippets
-- `demo_trials` – legacy demo trial feed kept for contributor compatibility
-- `demo_drug_updates` – clean demo/starter drug/safety feed
-- `demo_biomarker` – clean demo/starter biomarker feed
 
-The demo connectors are intentionally honest starter connectors so contributors can improve them without rewriting the pipeline.
+Contributor-only demo connectors still exist behind the explicit `backend/scripts/seed_demo.py` path for development, but they are not part of the public product scope.
 See `docs/connectors-and-matching.md` for connector behavior, normalization, scoring, and test details.
 
 ## End-user flow
@@ -73,16 +70,17 @@ See `docs/connectors-and-matching.md` for connector behavior, normalization, sco
 3. Complete onboarding:
    - learn what OncoWatch is and is not
    - enter patient profile details
-   - add OpenRouter API key and test it
    - choose monitoring preferences
    - run the setup health check
 4. Review the dashboard and findings
-5. Run reports locally and bring them to the oncology visit
+5. Start a manual run
+6. Optionally leave the app open for while-open automatic runs
+7. Run reports locally and bring them to the oncology visit
 
 ## Developer setup
 
 ### Prerequisites
-- Node.js 20+
+- Node.js 22.x (`.nvmrc` is included)
 - Python 3.11+
 - Rust stable toolchain
 - Tauri desktop prerequisites for your OS
@@ -99,6 +97,7 @@ pip install -e .
 ### Frontend / desktop
 
 ```bash
+nvm use
 npm install
 npm run dev
 ```
@@ -110,23 +109,30 @@ cd backend
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-That runs:
-- FastAPI backend on `127.0.0.1:17845`
-- Tauri desktop dev shell with the Vite UI
+Useful local checks:
+
+```bash
+npm run lint
+npm run build:frontend
+npm run check:rust
+npm run test:e2e
+```
 
 ## Packaging strategy
 
-OncoWatch is packaged as a Tauri desktop installer. The frontend is bundled by Tauri, and the Python backend is compiled into a standalone sidecar binary using PyInstaller. Tauri bundles external sidecar binaries via `externalBin`, which keeps the backend invisible to the end user and avoids any separate backend startup step.
+OncoWatch is packaged as a Tauri desktop installer. The frontend is bundled by Tauri, and the Python backend is compiled into a standalone sidecar binary using PyInstaller. Tauri bundles external sidecar binaries via `externalBin`, which keeps the backend invisible to the end user and avoids any separate backend startup step. The repo then wraps the generated macOS `.app` in a deterministic `hdiutil`-based DMG step instead of relying on Finder automation.
 
 ### Build steps
 
 ```bash
+nvm use
 npm install
-cd backend && pip install -e . pyinstaller && cd ..
+python -m pip install -e './backend[build]'
 npm run build:desktop
 ```
 
 The sidecar build helper writes the packaged backend binary to `dist-sidecar/`, which Tauri includes in the final app bundle.
+See `docs/release-checklist.md` for the macOS signing, notarization, and release handoff flow.
 
 ## Local storage behavior
 
@@ -137,6 +143,8 @@ OncoWatch creates local app directories automatically on first launch:
 - reports
 - config
 - encrypted secret key file
+
+The public release exposes these paths in the in-app About / Support page.
 
 See `docs/storage.md` for details.
 
@@ -152,10 +160,6 @@ ONCOWATCH_BACKEND_HOST=127.0.0.1
 ONCOWATCH_BACKEND_PORT=17845
 ONCOWATCH_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
-
-## OpenRouter setup
-
-The app explains OpenRouter in plain English, lets the user paste a key, tests the key, and fetches models. OpenRouter uses a Bearer token in the `Authorization` header, and its API base is `https://openrouter.ai/api/v1`. The models endpoint can be queried for available models.
 
 ## PDF export
 

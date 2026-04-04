@@ -86,8 +86,14 @@ class OpenRouterTestResponse(BaseModel):
 
 class BootstrapResponse(BaseModel):
     app_name: str
+    app_version: str
     disclaimer: str
     onboarding_completed: bool
     active_profile_id: int | None = None
+    config_dir: str
     data_dir: str
+    logs_dir: str
     reports_dir: str
+    monitoring_mode: str
+    privacy_summary: str
+    product_scope: str

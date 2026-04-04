@@ -763,6 +763,12 @@ p {
   color: #24404c;
 }
 
+.callout.callout-danger {
+  border-color: rgba(151, 54, 50, 0.18);
+  background: linear-gradient(180deg, rgba(252, 240, 238, 0.96), rgba(247, 225, 222, 0.94));
+  color: var(--danger-text);
+}
+
 .callout ol {
   margin: 12px 0 0 20px;
   padding: 0;
@@ -935,6 +941,39 @@ p {
 .empty-state p {
   margin-top: 10px;
   color: var(--text-soft);
+}
+
+.recovery-card {
+  width: min(680px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 28px;
+  border-radius: 28px;
+  border: 1px solid var(--line);
+  background: rgba(255, 252, 248, 0.92);
+  box-shadow: var(--shadow-soft);
+}
+
+.recovery-details,
+.support-path-grid {
+  gap: 18px;
+}
+
+.support-path {
+  margin-top: 8px;
+  font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, monospace;
+  font-size: 0.92rem;
+  color: var(--text-soft);
+  word-break: break-word;
+}
+
+.support-step {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .onboarding-shell {
@@ -1119,6 +1158,11 @@ p {
 .health-item.error {
   background: rgba(247, 225, 222, 0.72);
   border-color: rgba(151, 54, 50, 0.18);
+}
+
+.health-item.warning {
+  background: rgba(251, 237, 211, 0.78);
+  border-color: rgba(138, 91, 22, 0.18);
 }
 
 .card,

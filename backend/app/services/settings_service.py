@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.release import PUBLIC_SOURCE_CATEGORIES, PUBLIC_SOURCE_KEYS
 from app.core.security import decrypt_secret, encrypt_secret
 from app.models.settings import ApiProviderConfig, AppSettings, SourceConfig
 from app.schemas.settings import AppSettingsUpdate, ApiProviderConfigUpsert, OpenRouterTestResponse, SourceConfigUpdate
@@ -27,11 +28,19 @@ def get_settings(session: Session) -> AppSettings:
             daily_run_time="08:30",
             default_report_style="clinical",
             default_report_length="daily_summary",
-            enabled_source_categories=["clinical_trials", "literature", "drug_updates", "biomarker"],
+            enabled_source_categories=sorted(PUBLIC_SOURCE_CATEGORIES),
         )
         session.add(settings)
         session.commit()
         session.refresh(settings)
+    else:
+        settings.enabled_source_categories = [
+            category
+            for category in settings.enabled_source_categories
+            if category in PUBLIC_SOURCE_CATEGORIES
+        ] or sorted(PUBLIC_SOURCE_CATEGORIES)
+        settings.demo_profile_enabled = False
+        session.commit()
     return settings
 
 
@@ -41,7 +50,7 @@ def update_settings(session: Session, payload: AppSettingsUpdate) -> AppSettings
     settings.daily_run_time = payload.daily_run_time
     settings.default_report_style = payload.default_report_style
     settings.default_report_length = payload.default_report_length
-    settings.demo_profile_enabled = payload.demo_profile_enabled
+    settings.demo_profile_enabled = False
     settings.last_health_check_at = datetime.now(timezone.utc)
     session.commit()
     configure_scheduler_from_settings(settings.daily_run_time)
@@ -49,12 +58,16 @@ def update_settings(session: Session, payload: AppSettingsUpdate) -> AppSettings
 
 
 def list_source_configs(session: Session) -> list[SourceConfig]:
-    return session.scalars(select(SourceConfig).order_by(SourceConfig.category, SourceConfig.name)).all()
+    return session.scalars(
+        select(SourceConfig)
+        .where(SourceConfig.connector_key.in_(tuple(PUBLIC_SOURCE_KEYS)))
+        .order_by(SourceConfig.category, SourceConfig.name)
+    ).all()
 
 
 def update_source_config(session: Session, source_id: int, payload: SourceConfigUpdate) -> SourceConfig:
     source = session.get(SourceConfig, source_id)
-    if source is None:
+    if source is None or source.connector_key not in PUBLIC_SOURCE_KEYS:
         raise ValueError("Source config not found")
     source.enabled = payload.enabled
     source.settings_json = payload.settings_json

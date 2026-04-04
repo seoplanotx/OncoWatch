@@ -2,7 +2,7 @@
 
 ## Goals
 
-- normal desktop installer for Mac and Windows
+- notarized direct-download DMG for macOS first
 - no Python install required for patients
 - no manual backend startup
 - local SQLite storage
@@ -11,7 +11,7 @@
 ## Runtime packaging approach
 
 ### Desktop shell
-Tauri is used as the installer/bundler layer.
+Tauri is used as the desktop bundler layer and produces the signed `.app` bundle.
 
 ### Backend
 The FastAPI service is compiled into a standalone binary with PyInstaller.
@@ -25,11 +25,10 @@ Tauri supports bundling external binaries using `externalBin`, which is the clea
 
 ## Build flow
 
-1. Install backend dependencies
+1. Install backend build dependencies with `python -m pip install -e './backend[build]'`
 2. Build the backend sidecar binary
-3. Build the frontend
-4. Run `tauri build`
-5. Produce platform installers
+3. Build the Tauri macOS app bundle
+4. Wrap the `.app` in a DMG with the repo-owned `scripts/build_macos_dmg.sh`
 
 ## Installer expectations
 
@@ -38,8 +37,10 @@ Tauri supports bundling external binaries using `externalBin`, which is the clea
 - backend sidecar included automatically
 
 ### macOS
-- app bundle / DMG via Tauri bundle target
+- Tauri builds the `.app` bundle and the repo wraps it into the distributable DMG
 - backend sidecar included inside the application bundle
+- DMG created with `hdiutil` for non-interactive local/CI builds
+- app must be code signed and notarized before distribution
 
 ## Update strategy
 

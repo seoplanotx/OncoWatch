@@ -4,7 +4,9 @@ import { BriefingBlockers } from '../components/BriefingBlockers';
 import { BriefingSection } from '../components/BriefingSection';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
+import { PageErrorState } from '../components/PageErrorState';
 import { api } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
 import type { Dashboard } from '../lib/types';
 
 function jumpToSection(anchorId: string) {
@@ -14,24 +16,41 @@ function jumpToSection(anchorId: string) {
 export function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [notice, setNotice] = useState('');
+  const [runBusy, setRunBusy] = useState(false);
 
   async function load() {
     setLoading(true);
+    setErrorMessage('');
     try {
       const result = await api.getDashboard();
       setData(result);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, 'Could not load the dashboard.'));
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   async function handleRunNow() {
-    await api.triggerRun();
-    await load();
+    setRunBusy(true);
+    setNotice('');
+    setErrorMessage('');
+    try {
+      await api.triggerRun();
+      setNotice('Monitoring finished and the dashboard has been refreshed.');
+      await load();
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, 'Could not start monitoring.'));
+      await load();
+    } finally {
+      setRunBusy(false);
+    }
   }
 
   const latestRunLabel = useMemo(() => {
@@ -45,23 +64,34 @@ export function DashboardPage() {
     return 'Run monitoring to populate the first briefing.';
   }, [data]);
 
-  if (loading) return <div className="loading-block">Loading dashboard…</div>;
+  if (loading) return <div className="loading-block">Loading dashboard...</div>;
+  if (errorMessage && !data) {
+    return <PageErrorState title="Dashboard unavailable" message={errorMessage} onRetry={load} />;
+  }
   if (!data) return <EmptyState title="Dashboard unavailable" message="The dashboard could not be loaded." />;
+
+  const runInProgress = runBusy || data.latest_run?.status === 'running';
 
   return (
     <div className="page-stack">
       <div className="page-header">
         <div>
-          <div className="eyebrow">Daily monitoring</div>
+          <div className="eyebrow">Local monitoring</div>
           <h1>Dashboard</h1>
-          <p className="page-lede">Scan what is new, what changed, and where clinician review still needs extra context.</p>
+          <p className="page-lede">
+            Scan what is new, what changed, and what still needs clinician context. Automatic runs happen only while
+            OncoWatch is open.
+          </p>
         </div>
         <div className="page-header-actions">
-          <button className="primary-button" onClick={handleRunNow}>
-            Run now
+          <button className="primary-button" onClick={() => void handleRunNow()} disabled={runInProgress}>
+            {runInProgress ? 'Monitoring...' : 'Run now'}
           </button>
         </div>
       </div>
+
+      {notice && <div className="callout">{notice}</div>}
+      {errorMessage && <div className="callout callout-danger">{errorMessage}</div>}
 
       <div className="stats-grid">
         <Card title="New findings" description="Since the last completed run." className="stat-card">
@@ -79,7 +109,7 @@ export function DashboardPage() {
       </div>
 
       <Card
-        title="What changed since last run?"
+        title="What changed since the last run?"
         description={latestRunLabel}
         className="hero-card"
         action={
@@ -155,7 +185,7 @@ export function DashboardPage() {
                   <div>{data.latest_run.triggered_by}</div>
                 </div>
                 <div>
-                  <strong>Next scheduled run</strong>
+                  <strong>Next automatic run while open</strong>
                   <div>{data.next_scheduled_run ? new Date(data.next_scheduled_run).toLocaleString() : 'Not scheduled'}</div>
                 </div>
               </div>

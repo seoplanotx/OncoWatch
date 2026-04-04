@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
@@ -24,6 +25,23 @@ def build_health_response() -> HealthCheckResponse:
         checked_at=datetime(2026, 3, 27, 4, 30, tzinfo=timezone.utc),
         overall_ok=True,
         items=[HealthCheckItem(key="storage", label="Local storage", ok=True, message="ready")],
+    )
+
+
+def build_blocking_health_response() -> HealthCheckResponse:
+    return HealthCheckResponse(
+        checked_at=datetime(2026, 3, 27, 4, 30, tzinfo=timezone.utc),
+        overall_ok=False,
+        items=[
+            HealthCheckItem(
+                key="database",
+                label="Database",
+                ok=False,
+                message="SQLite failed.",
+                severity="blocking",
+                blocking=True,
+            )
+        ],
     )
 
 
@@ -59,7 +77,7 @@ class OnboardingFlowTests(unittest.TestCase):
                 daily_run_time="08:30",
                 default_report_style="clinical",
                 default_report_length="daily_summary",
-                enabled_source_categories=["clinical_trials", "literature", "drug_updates", "biomarker"],
+                enabled_source_categories=["clinical_trials", "literature"],
             )
             session.add(settings)
             session.commit()
@@ -72,7 +90,9 @@ class OnboardingFlowTests(unittest.TestCase):
                 state = complete_onboarding(OnboardingCompleteRequest(), session)
 
             fake_paths = SimpleNamespace(
+                config_dir=Path("/tmp/oncowatch-config"),
                 data_dir=Path("/tmp/oncowatch-data"),
+                logs_dir=Path("/tmp/oncowatch-data/logs"),
                 reports_dir=Path("/tmp/oncowatch-data/reports"),
             )
             with patch("app.api.routes.bootstrap.get_app_paths", return_value=fake_paths):
@@ -82,7 +102,10 @@ class OnboardingFlowTests(unittest.TestCase):
 
             self.assertTrue(state.is_completed)
             self.assertTrue(bootstrap.onboarding_completed)
+            self.assertEqual(bootstrap.app_version, "0.1.0")
             self.assertEqual(bootstrap.active_profile_id, profile.id)
+            self.assertEqual(bootstrap.logs_dir, "/tmp/oncowatch-data/logs")
+            self.assertEqual(bootstrap.monitoring_mode, "while_open")
             self.assertEqual(dashboard.counts["total_findings"], 0)
             self.assertEqual(dashboard.recent_findings, [])
             self.assertEqual(dashboard.briefing.new_count, 0)
@@ -93,3 +116,14 @@ class OnboardingFlowTests(unittest.TestCase):
                 "top_trial_matches",
                 "top_literature_updates",
             ])
+
+    def test_complete_onboarding_rejects_blocking_health_failures(self) -> None:
+        with self.session_factory() as session:
+            with patch("app.api.routes.onboarding.run_health_check", return_value=build_blocking_health_response()):
+                with self.assertRaises(HTTPException):
+                    complete_onboarding(OnboardingCompleteRequest(), session)
+
+            stored = session.scalar(select(OnboardingState))
+            self.assertIsNotNone(stored)
+            self.assertFalse(stored.is_completed)
+            self.assertEqual(stored.current_step, "health_check")

@@ -26,7 +26,8 @@ Behavior:
 
 Notes:
 - Existing local installs with the old `demo_trials` source are migrated in place to `clinicaltrials_gov`.
-- The legacy demo trial connector remains registered so older data and contributor workflows do not hard-fail.
+- The legacy demo trial connector remains registered so contributor workflows do not hard-fail.
+- The public release does not enable demo connectors by default.
 
 ## PubMed connector
 

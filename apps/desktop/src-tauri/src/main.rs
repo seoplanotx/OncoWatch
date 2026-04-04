@@ -3,12 +3,15 @@
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent};
-use tauri_plugin_shell::{process::CommandChild, ShellExt};
+use tauri_plugin_shell::process::CommandChild;
+#[cfg(not(debug_assertions))]
+use tauri_plugin_shell::ShellExt;
 
 struct BackendState {
     child: Mutex<Option<CommandChild>>,
 }
 
+#[cfg(not(debug_assertions))]
 fn spawn_backend(app: &tauri::AppHandle) -> Result<CommandChild, Box<dyn std::error::Error>> {
     let command = app
         .shell()
@@ -31,13 +34,18 @@ fn main() {
         .manage(BackendState {
             child: Mutex::new(None),
         })
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(not(debug_assertions))]
             {
-                let child = spawn_backend(&app.handle())
-                    .map_err(|e| format!("failed to start backend sidecar: {e}"))?;
-                let state = app.state::<BackendState>();
-                *state.child.lock().unwrap() = Some(child);
+                match spawn_backend(&_app.handle()) {
+                    Ok(child) => {
+                        let state = _app.state::<BackendState>();
+                        *state.child.lock().unwrap() = Some(child);
+                    }
+                    Err(error) => {
+                        eprintln!("failed to start backend sidecar: {error}");
+                    }
+                }
             }
             Ok(())
         })
@@ -46,7 +54,8 @@ fn main() {
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { .. } = event {
                 let state = app_handle.state::<BackendState>();
-                if let Some(child) = state.child.lock().unwrap().as_mut() {
+                let mut child_guard = state.child.lock().unwrap();
+                if let Some(child) = child_guard.take() {
                     let _ = child.kill();
                 }
             }

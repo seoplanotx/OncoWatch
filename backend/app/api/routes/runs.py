@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.models.run import MonitoringRun
 from app.schemas.run import MonitoringRunRead, TriggerRunRequest
-from app.services.monitoring_service import run_monitoring
+from app.services.monitoring_service import RunConflictError, run_monitoring
 
 router = APIRouter()
 
@@ -17,4 +17,7 @@ def list_runs(db: Session = Depends(get_db)) -> list[MonitoringRunRead]:
 
 @router.post("/trigger", response_model=MonitoringRunRead)
 def trigger_run(payload: TriggerRunRequest, db: Session = Depends(get_db)) -> MonitoringRunRead:
-    return run_monitoring(db, profile_id=payload.profile_id, triggered_by=payload.triggered_by)
+    try:
+        return run_monitoring(db, profile_id=payload.profile_id, triggered_by=payload.triggered_by)
+    except RunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

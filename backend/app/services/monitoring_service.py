@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+from threading import Lock
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.connectors.base import ConnectorContext
@@ -14,102 +16,135 @@ from app.services.profile_service import get_active_profile, get_profile
 from app.utils.dates import utcnow
 
 logger = logging.getLogger(__name__)
+_monitoring_lock = Lock()
+
+
+class RunConflictError(RuntimeError):
+    pass
+
+
+def monitoring_is_running(session: Session) -> bool:
+    return (
+        session.scalar(
+            select(MonitoringRun.id).where(
+                MonitoringRun.status == "running",
+                MonitoringRun.completed_at.is_(None),
+            )
+        )
+        is not None
+    )
 
 
 def run_monitoring(session: Session, profile_id: int | None = None, triggered_by: str = "manual") -> MonitoringRun:
+    if not _monitoring_lock.acquire(blocking=False):
+        raise RunConflictError("Monitoring is already in progress. Wait for the active run to finish.")
+
     profile = get_profile(session, profile_id) if profile_id else get_active_profile(session)
-    run = MonitoringRun(
-        profile_id=profile.id if profile else None,
-        status="running",
-        triggered_by=triggered_by,
-        started_at=utcnow(),
-        summary_json={"connectors": []},
-        sources_checked=[],
-    )
-    session.add(run)
-    session.commit()
-    session.refresh(run)
+    try:
+        if monitoring_is_running(session):
+            raise RunConflictError("Monitoring is already in progress. Wait for the active run to finish.")
 
-    if profile is None:
-        run.status = "failed"
-        run.error_text = "No patient profile is available yet."
-        run.completed_at = utcnow()
+        run = MonitoringRun(
+            profile_id=profile.id if profile else None,
+            status="running",
+            triggered_by=triggered_by,
+            started_at=utcnow(),
+            summary_json={"connectors": []},
+            sources_checked=[],
+        )
+        session.add(run)
         session.commit()
+        session.refresh(run)
+
+        if profile is None:
+            run.status = "failed"
+            run.error_text = "No patient profile is available yet."
+            run.completed_at = utcnow()
+            session.commit()
+            return run
+
+        registry = connector_registry()
+        source_configs = session.query(SourceConfig).filter(SourceConfig.enabled.is_(True)).all()
+
+        new_count = 0
+        changed_count = 0
+        connector_summaries: list[dict] = []
+        new_finding_ids: list[int] = []
+        changed_finding_ids: list[int] = []
+
+        for source in source_configs:
+            connector = registry.get(source.connector_key)
+            if connector is None:
+                connector_summaries.append(
+                    {"connector_key": source.connector_key, "status": "missing", "retrieved": 0}
+                )
+                continue
+
+            context = ConnectorContext(profile=profile, source_config=source, requested_at=utcnow())
+            try:
+                records = connector.fetch(context)
+                run.sources_checked = [*run.sources_checked, source.connector_key]
+                source.last_successful_sync_at = utcnow()
+                source.last_error = None
+                for record in records:
+                    existing = find_existing_finding(
+                        session,
+                        profile_id=profile.id,
+                        source_name=record.source_name,
+                        external_identifier=record.external_identifier,
+                    )
+                    match = evaluate(profile, record, is_new=existing is None)
+                    finding, state = upsert_finding(
+                        session,
+                        profile_id=profile.id,
+                        monitoring_run_id=run.id,
+                        record=record,
+                        match=match,
+                    )
+                    if state == "new":
+                        new_count += 1
+                        new_finding_ids.append(finding.id)
+                    elif state == "changed":
+                        changed_count += 1
+                        changed_finding_ids.append(finding.id)
+
+                connector_summaries.append(
+                    {
+                        "connector_key": source.connector_key,
+                        "status": "ok",
+                        "retrieved": len(records),
+                    }
+                )
+            except Exception as exc:
+                logger.exception("Connector failed: %s", source.connector_key)
+                source.last_error = str(exc)
+                connector_summaries.append(
+                    {
+                        "connector_key": source.connector_key,
+                        "status": "error",
+                        "retrieved": 0,
+                        "error": str(exc),
+                    }
+                )
+
+        run.new_findings_count = new_count
+        run.changed_findings_count = changed_count
+        run.completed_at = utcnow()
+        run.summary_json = {
+            "connectors": connector_summaries,
+            "new_finding_ids": new_finding_ids,
+            "changed_finding_ids": changed_finding_ids,
+        }
+        run.status = "completed"
+        session.commit()
+        session.refresh(run)
         return run
-
-    registry = connector_registry()
-    source_configs = session.query(SourceConfig).filter(SourceConfig.enabled.is_(True)).all()
-
-    new_count = 0
-    changed_count = 0
-    connector_summaries: list[dict] = []
-    new_finding_ids: list[int] = []
-    changed_finding_ids: list[int] = []
-
-    for source in source_configs:
-        connector = registry.get(source.connector_key)
-        if connector is None:
-            connector_summaries.append(
-                {"connector_key": source.connector_key, "status": "missing", "retrieved": 0}
-            )
-            continue
-
-        context = ConnectorContext(profile=profile, source_config=source, requested_at=utcnow())
-        try:
-            records = connector.fetch(context)
-            run.sources_checked = [*run.sources_checked, source.connector_key]
-            source.last_successful_sync_at = utcnow()
-            source.last_error = None
-            for record in records:
-                existing = find_existing_finding(
-                    session,
-                    profile_id=profile.id,
-                    source_name=record.source_name,
-                    external_identifier=record.external_identifier,
-                )
-                match = evaluate(profile, record, is_new=existing is None)
-                finding, state = upsert_finding(
-                    session,
-                    profile_id=profile.id,
-                    monitoring_run_id=run.id,
-                    record=record,
-                    match=match,
-                )
-                if state == "new":
-                    new_count += 1
-                    new_finding_ids.append(finding.id)
-                elif state == "changed":
-                    changed_count += 1
-                    changed_finding_ids.append(finding.id)
-
-            connector_summaries.append(
-                {
-                    "connector_key": source.connector_key,
-                    "status": "ok",
-                    "retrieved": len(records),
-                }
-            )
-        except Exception as exc:
-            logger.exception("Connector failed: %s", source.connector_key)
-            source.last_error = str(exc)
-            connector_summaries.append(
-                {
-                    "connector_key": source.connector_key,
-                    "status": "error",
-                    "retrieved": 0,
-                    "error": str(exc),
-                }
-            )
-
-    run.new_findings_count = new_count
-    run.changed_findings_count = changed_count
-    run.completed_at = utcnow()
-    run.summary_json = {
-        "connectors": connector_summaries,
-        "new_finding_ids": new_finding_ids,
-        "changed_finding_ids": changed_finding_ids,
-    }
-    run.status = "completed"
-    session.commit()
-    session.refresh(run)
-    return run
+    except Exception as exc:
+        if "run" in locals() and isinstance(run, MonitoringRun):
+            run.status = "failed"
+            run.error_text = str(exc)
+            run.completed_at = utcnow()
+            session.commit()
+        raise
+    finally:
+        _monitoring_lock.release()

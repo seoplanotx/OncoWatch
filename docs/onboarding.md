@@ -4,6 +4,7 @@
 - explains what OncoWatch is
 - explains what it is not
 - shows the safety disclaimer clearly
+- states that the public release covers real ClinicalTrials.gov and PubMed monitoring only
 
 ## Step 2 — Patient Profile
 - profile name
@@ -18,30 +19,20 @@
 - preferences and exclusions
 - notes
 
-## Step 3 — OpenRouter
-- plain-language explanation
-- open OpenRouter button
-- “How to get your API key” panel
-- API key field
-- model selector
-- test key action
-- save provider settings
-
-## Step 4 — Monitoring Preferences
-- daily run time
+## Step 3 — Monitoring Preferences
+- automatic run time while OncoWatch is open
 - report defaults
-- source toggles
-- demo profile option
+- real-source toggles
 
-## Step 5 — Test Run
+## Step 4 — Health Check
 - local storage
 - database
 - source health
 - report generation
-- OpenRouter validation if configured
 
-## Step 6 — Completion
+## Step 5 — Completion
 - confirms setup
-- shows next daily run
+- shows the while-open automatic run time
 - explains that reports are stored locally
+- reminds the user to start with a manual run
 - opens the dashboard

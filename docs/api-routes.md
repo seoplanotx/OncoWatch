@@ -4,9 +4,9 @@
 - `GET /api/health` — local health check
 
 ## Bootstrap / onboarding
-- `GET /api/bootstrap` — app directories and initial bootstrap info
+- `GET /api/bootstrap` — app version, local directories, privacy/support info, and initial bootstrap state
 - `GET /api/onboarding/state` — current onboarding state
-- `POST /api/onboarding/complete` — mark onboarding complete
+- `POST /api/onboarding/complete` — mark onboarding complete after blocking health checks pass
 - `POST /api/onboarding/demo-profile` — create the seeded demo profile
 
 ## Profiles
@@ -34,7 +34,7 @@
 
 ## Runs
 - `GET /api/runs` — monitoring run history
-- `POST /api/runs/trigger` — manual monitoring run
+- `POST /api/runs/trigger` — manual monitoring run, returns `409` if another run is already active
 
 ## Dashboard
 - `GET /api/dashboard` — latest overview and counters

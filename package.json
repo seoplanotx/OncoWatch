@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "description": "Local-first oncology monitoring desktop app",
+  "packageManager": "npm@10.9.7",
+  "engines": {
+    "node": "22.x",
+    "npm": "10.x"
+  },
   "workspaces": [
     "apps/desktop"
   ],
@@ -11,10 +16,17 @@
     "dev:backend": "cd backend && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 17845",
     "dev:desktop": "npm --workspace apps/desktop run tauri dev",
     "build:backend-sidecar": "python scripts/build_backend_sidecar.py",
-    "build:desktop": "npm run build:backend-sidecar && npm --workspace apps/desktop run tauri build",
-    "lint": "npm --workspace apps/desktop run lint"
+    "build:frontend": "npm --workspace apps/desktop run build",
+    "build:desktop:app": "npm run build:backend-sidecar && npm --workspace apps/desktop run tauri -- build --bundles app --ci",
+    "build:desktop": "npm run build:desktop:app && ./scripts/build_macos_dmg.sh",
+    "check:rust": "npm run build:backend-sidecar && cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml",
+    "lint": "npm --workspace apps/desktop run lint",
+    "test:e2e": "playwright test",
+    "test:backend": "cd backend && PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -v",
+    "set:version": "python scripts/set_version.py"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "concurrently": "^9.0.0"
   }
 }

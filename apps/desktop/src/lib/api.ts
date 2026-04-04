@@ -12,7 +12,38 @@ import type {
   SourceConfig
 } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:17845';
+export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:17845';
+
+export class ApiError extends Error {
+  status: number;
+  body?: unknown;
+
+  constructor(message: string, status: number, body?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
+function errorMessageFromBody(body: unknown, fallback: string): string {
+  if (typeof body === 'string' && body.trim()) {
+    return body;
+  }
+  if (body && typeof body === 'object' && 'detail' in body) {
+    const detail = (body as { detail?: unknown }).detail;
+    if (typeof detail === 'string' && detail.trim()) {
+      return detail;
+    }
+    if (detail && typeof detail === 'object' && 'message' in detail) {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) {
+        return message;
+      }
+    }
+  }
+  return fallback;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}/api${path}`, {
@@ -24,8 +55,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    const fallback = `Request failed: ${response.status}`;
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      const body = await response.json();
+      throw new ApiError(errorMessageFromBody(body, fallback), response.status, body);
+    }
+
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    throw new ApiError(errorMessageFromBody(text, fallback), response.status, text);
   }
 
   if (response.status === 204) {

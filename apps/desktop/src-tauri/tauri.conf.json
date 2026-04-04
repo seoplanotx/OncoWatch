@@ -19,12 +19,14 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:17845 http://localhost:17845 tauri: ipc:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:;"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "app"
+    ],
     "externalBin": [
       "../../../dist-sidecar/oncowatch-backend"
     ]

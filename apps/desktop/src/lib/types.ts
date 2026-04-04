@@ -88,6 +88,8 @@ export type HealthItem = {
   label: string;
   ok: boolean;
   message: string;
+  severity: string;
+  blocking: boolean;
 };
 
 export type HealthResponse = {
@@ -215,9 +217,15 @@ export type ReportExport = {
 
 export type BootstrapInfo = {
   app_name: string;
+  app_version: string;
   disclaimer: string;
   onboarding_completed: boolean;
   active_profile_id?: number | null;
+  config_dir: string;
   data_dir: string;
+  logs_dir: string;
   reports_dir: string;
+  monitoring_mode: string;
+  privacy_summary: string;
+  product_scope: string;
 };

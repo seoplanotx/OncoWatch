@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -24,9 +25,9 @@ class AppPaths:
 
 @lru_cache(maxsize=1)
 def get_app_paths() -> AppPaths:
-    data_dir = Path(user_data_dir(APP_NAME, APP_AUTHOR))
-    config_dir = Path(user_config_dir(APP_NAME, APP_AUTHOR))
-    cache_dir = Path(user_cache_dir(APP_NAME, APP_AUTHOR))
+    data_dir = Path(os.getenv("ONCOWATCH_DATA_DIR", user_data_dir(APP_NAME, APP_AUTHOR)))
+    config_dir = Path(os.getenv("ONCOWATCH_CONFIG_DIR", user_config_dir(APP_NAME, APP_AUTHOR)))
+    cache_dir = Path(os.getenv("ONCOWATCH_CACHE_DIR", user_cache_dir(APP_NAME, APP_AUTHOR)))
     reports_dir = data_dir / "reports"
     logs_dir = data_dir / "logs"
     db_path = data_dir / "oncowatch.sqlite3"

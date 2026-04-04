@@ -37,10 +37,13 @@ def shutdown_scheduler() -> None:
 
 
 def _run_scheduled_job() -> None:
-    from app.services.monitoring_service import run_monitoring
+    from app.services.monitoring_service import RunConflictError, run_monitoring
 
     with SessionLocal() as session:
-        run_monitoring(session, triggered_by="scheduler")
+        try:
+            run_monitoring(session, triggered_by="scheduler")
+        except RunConflictError:
+            logger.info("Skipped scheduled run because monitoring is already in progress.")
 
 
 def configure_scheduler_from_settings(daily_run_time: str) -> None:

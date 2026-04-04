@@ -4,6 +4,12 @@
 node_modules/
 dist/
 build/
+dist-sidecar/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+playwright-report/
+test-results/
+.playwright/
 
 # Python environments and caches
 .venv/
@@ -13,6 +19,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 *.egg-info/
+backend/oncowatch-backend.spec
 
 # Local environment and runtime data
 .env

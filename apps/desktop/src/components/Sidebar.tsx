@@ -4,13 +4,14 @@ const primaryItems = [
   { to: '/', label: 'Dashboard' },
   { to: '/findings', label: 'Findings Feed' },
   { to: '/trials', label: 'Trial Matches' },
-  { to: '/updates', label: 'Research / Drug Updates' },
+  { to: '/updates', label: 'Literature Updates' },
   { to: '/reports', label: 'Reports' }
 ];
 
 const secondaryItems = [
   { to: '/profile', label: 'Patient Profile' },
-  { to: '/settings', label: 'Settings' }
+  { to: '/settings', label: 'Settings' },
+  { to: '/support', label: 'About / Support' }
 ];
 
 export function Sidebar() {
@@ -28,7 +29,7 @@ export function Sidebar() {
         <div className="sidebar-summary">
           <div className="sidebar-summary-label">Workspace</div>
           <p className="sidebar-summary-copy">
-            A private daily briefing surface for trials, literature, and structured follow-up questions.
+            A private briefing surface for real ClinicalTrials.gov and PubMed monitoring on this Mac.
           </p>
         </div>
 
@@ -67,7 +68,7 @@ export function Sidebar() {
         <div className="sidebar-trust">
           <div className="sidebar-trust-label">Trust guardrails</div>
           <p className="sidebar-trust-copy">
-            Reports and provider credentials are stored locally. Findings are informational and still need clinician review.
+            Profiles, reports, and logs stay local. Findings are informational and still need clinician review.
           </p>
         </div>
       </div>

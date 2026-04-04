@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import { FindingSummaryCard } from '../components/FindingSummaryCard';
+import { PageErrorState } from '../components/PageErrorState';
 import { api } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
 import { formatFindingTypeLabel } from '../lib/findingPresentation';
 import type { Finding } from '../lib/types';
 
@@ -12,19 +14,23 @@ export function FindingsPage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
   async function load() {
     setLoading(true);
+    setErrorMessage('');
     try {
       const result = await api.getFindings();
       setItems(result.items);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, 'Could not load findings.'));
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   const visible = useMemo(() => {
@@ -53,12 +59,11 @@ export function FindingsPage() {
     () => [
       { value: '', label: 'All findings' },
       { value: 'clinical_trials', label: 'Clinical trials' },
-      { value: 'literature', label: 'Literature' },
-      { value: 'drug_updates', label: 'Drug updates' },
-      { value: 'biomarker', label: 'Biomarkers' }
+      { value: 'literature', label: 'Literature' }
     ],
     []
   );
+
   const visibleMetrics = useMemo(
     () => ({
       highRelevance: visible.filter((item) => item.relevance_label === 'High relevance').length,
@@ -68,7 +73,10 @@ export function FindingsPage() {
     [visible]
   );
 
-  if (loading) return <div className="loading-block">Loading findings…</div>;
+  if (loading) return <div className="loading-block">Loading findings...</div>;
+  if (errorMessage && items.length === 0) {
+    return <PageErrorState title="Findings unavailable" message={errorMessage} onRetry={load} />;
+  }
 
   return (
     <div className="page-stack">
@@ -76,12 +84,17 @@ export function FindingsPage() {
         <div>
           <div className="eyebrow">Source-backed feed</div>
           <h1>Findings Feed</h1>
-          <p className="page-lede">Search across titles, summaries, trial metadata, and evidence snippets without changing the underlying stored results.</p>
+          <p className="page-lede">
+            Search across titles, summaries, trial metadata, and evidence snippets without changing the underlying stored
+            results.
+          </p>
         </div>
         <div className="page-header-actions">
           <span className="section-counter">{visible.length} shown</span>
         </div>
       </div>
+
+      {errorMessage && <div className="callout callout-danger">{errorMessage}</div>}
 
       <Card
         title="Filter the feed"
@@ -89,7 +102,11 @@ export function FindingsPage() {
         className="filter-card"
       >
         <div className="toolbar toolbar-wide">
-          <input placeholder="Search findings, evidence, sponsors, phases, or summaries" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input
+            placeholder="Search findings, evidence, sponsors, phases, or summaries"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
         </div>
         <div className="filter-chip-row">
           {filterOptions.map((option) => (

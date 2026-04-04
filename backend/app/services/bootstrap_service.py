@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import logging
+import os
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.paths import get_app_paths
-from app.db.session import SessionLocal, init_db
+from app.core.release import DEMO_FINDING_SOURCE_NAMES, DEMO_SOURCE_KEYS, PUBLIC_SOURCE_CATEGORIES, PUBLIC_SOURCE_KEYS
+from app.db.migrations import ensure_schema_up_to_date
+from app.db.session import SessionLocal
+from app.models.finding import Finding
+from app.models.run import MonitoringRun
 from app.models.settings import ApiProviderConfig, AppSettings, OnboardingState, SourceConfig
+from app.utils.dates import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -35,20 +41,6 @@ DEFAULT_SOURCE_CONFIGS = [
         "enabled": True,
         "settings_json": {"retmax": 5},
     },
-    {
-        "category": "drug_updates",
-        "name": "Drug and label updates starter feed",
-        "connector_key": "demo_drug_updates",
-        "enabled": True,
-        "settings_json": {},
-    },
-    {
-        "category": "biomarker",
-        "name": "Biomarker updates starter feed",
-        "connector_key": "demo_biomarker",
-        "enabled": True,
-        "settings_json": {},
-    },
 ]
 
 
@@ -61,29 +53,30 @@ DISCLAIMER_TEXT = (
 
 def initialize_application() -> None:
     get_app_paths()
-    init_db()
+    ensure_schema_up_to_date()
     with SessionLocal() as session:
         _ensure_defaults(session)
+        _recover_interrupted_runs(session)
     logger.info("OncoWatch local storage and database initialized.")
 
 
 def _ensure_defaults(session: Session) -> None:
-    if session.scalar(select(AppSettings.id)) is None:
-        session.add(
-            AppSettings(
-                daily_run_time="08:30",
-                default_report_style="clinical",
-                default_report_length="daily_summary",
-                enabled_source_categories=["clinical_trials", "literature", "drug_updates", "biomarker"],
-            )
+    app_settings = session.scalar(select(AppSettings))
+    if app_settings is None:
+        app_settings = AppSettings(
+            daily_run_time="08:30",
+            default_report_style="clinical",
+            default_report_length="daily_summary",
+            enabled_source_categories=sorted(PUBLIC_SOURCE_CATEGORIES),
         )
+        session.add(app_settings)
 
     if session.scalar(select(OnboardingState.id)) is None:
         session.add(
             OnboardingState(
                 is_completed=False,
                 current_step="welcome",
-                show_demo_profile_option=True,
+                show_demo_profile_option=False,
                 welcome_acknowledged=False,
                 last_health_check={},
             )
@@ -102,6 +95,8 @@ def _ensure_defaults(session: Session) -> None:
         )
 
     _migrate_trial_source_config(session)
+    _disable_non_public_sources(session)
+    _purge_demo_findings(session)
 
     existing = {
         row.connector_key
@@ -111,6 +106,15 @@ def _ensure_defaults(session: Session) -> None:
         if config["connector_key"] not in existing:
             session.add(SourceConfig(**config))
 
+    enabled_categories = sorted(
+        {
+            config.category
+            for config in session.scalars(select(SourceConfig)).all()
+            if config.enabled and config.connector_key in PUBLIC_SOURCE_KEYS
+        }
+    )
+    app_settings.enabled_source_categories = enabled_categories or sorted(PUBLIC_SOURCE_CATEGORIES)
+    app_settings.demo_profile_enabled = False
     session.commit()
 
 
@@ -134,3 +138,55 @@ def _migrate_trial_source_config(session: Session) -> None:
     if legacy is not None and current is not None:
         legacy.enabled = False
         legacy.name = "Legacy demo clinical trials feed"
+
+
+def _disable_non_public_sources(session: Session) -> None:
+    if _allow_demo_content():
+        return
+    for source in session.scalars(select(SourceConfig)).all():
+        if source.connector_key not in DEMO_SOURCE_KEYS:
+            continue
+        source.enabled = False
+        if source.connector_key == "demo_drug_updates":
+            source.name = "Contributor demo drug feed"
+        elif source.connector_key == "demo_biomarker":
+            source.name = "Contributor demo biomarker feed"
+        elif source.connector_key == "demo_trials":
+            source.name = "Contributor demo clinical trials feed"
+
+
+def _purge_demo_findings(session: Session) -> None:
+    if _allow_demo_content():
+        return
+    demo_findings = session.scalars(
+        select(Finding).where(
+            or_(
+                Finding.source_name.in_(tuple(DEMO_FINDING_SOURCE_NAMES)),
+                Finding.external_identifier.like("DEMO-%"),
+            )
+        )
+    ).all()
+    for finding in demo_findings:
+        session.delete(finding)
+
+
+def _recover_interrupted_runs(session: Session) -> None:
+    running_runs = session.scalars(
+        select(MonitoringRun).where(
+            MonitoringRun.status == "running",
+            MonitoringRun.completed_at.is_(None),
+        )
+    ).all()
+    if not running_runs:
+        return
+
+    for run in running_runs:
+        run.status = "failed"
+        run.completed_at = utcnow()
+        if not run.error_text:
+            run.error_text = "The previous monitoring run stopped when OncoWatch closed or restarted."
+    session.commit()
+
+
+def _allow_demo_content() -> bool:
+    return os.getenv("ONCOWATCH_ALLOW_DEMO_CONTENT") == "1"

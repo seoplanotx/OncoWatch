@@ -25,8 +25,8 @@ export function Layout({ children, disclaimer }: LayoutProps) {
         </div>
         <div className="page-content">{children}</div>
         <footer className="footer-note">
-          <span>Profiles, settings, and reports stay on this device.</span>
-          <span>OncoWatch may surface relevant information, but treatment and eligibility decisions still require a licensed oncology team.</span>
+          <span>Profiles, settings, reports, and logs stay on this device.</span>
+          <span>Automatic runs happen only while OncoWatch is open, and treatment or eligibility decisions still require a licensed oncology team.</span>
         </footer>
       </main>
     </div>
