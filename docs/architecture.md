@@ -63,6 +63,12 @@ Owns:
 - report history persistence
 - clinician discussion question generation
 - evidence appendix formatting
+- the **report outline** (`build_report_outline`) — a structured description of
+  what a report contains, applying the same caps and ordering as the PDF
+  builders. It backs `GET /api/reports/preview` and is persisted onto each
+  generated report as `summary_json.outline`, so the in-app report view and the
+  PDF cannot drift apart. Like the rest of `summary_json`, it carries no
+  identifying fields.
 
 ### Settings + secrets
 Owns:

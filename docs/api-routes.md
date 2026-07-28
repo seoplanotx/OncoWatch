@@ -44,8 +44,14 @@
 
 ## Reports
 - `GET /api/reports` — report history
+- `GET /api/reports/preview?report_type=&profile_id=` — what a report would contain, without rendering or storing anything
 - `POST /api/reports/generate` — generate report
 - `GET /api/reports/{report_id}/download` — download report PDF
+
+`report_type` is one of `daily_summary`, `full_review`, `appointment_prep`;
+anything else is a `422`. Both the preview and the `outline` stored on a
+generated report use the same assembly, so the in-app report view and the PDF
+always agree.
 
 ## MCP gateway (Claude Desktop extension)
 Read-only, consent-gated namespace used exclusively by the Firstlight Desktop

@@ -17,6 +17,8 @@ import type {
   PlainLanguageResponse,
   ProviderConfig,
   ReportExport,
+  ReportOutline,
+  ReportType,
   SourceConfig
 } from './types';
 
@@ -80,6 +82,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+/** Binary sibling of `request` — keeps `ApiError` and the backend's `detail` intact. */
+async function requestBlob(path: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/api${path}`);
+
+  if (!response.ok) {
+    const fallback = `Request failed: ${response.status}`;
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      const body = await response.json();
+      throw new ApiError(errorMessageFromBody(body, fallback), response.status, body);
+    }
+
+    const text = await response.text();
+    throw new ApiError(errorMessageFromBody(text, fallback), response.status, text);
+  }
+
+  return response.blob();
 }
 
 export const api = {
@@ -166,13 +188,13 @@ export const api = {
     ),
 
   getReports: () => request<ReportExport[]>('/reports'),
-  generateReport: (payload: Record<string, unknown>) =>
+  getReportPreview: (reportType: ReportType, profileId?: number) =>
+    request<ReportOutline>(
+      `/reports/preview?report_type=${reportType}${typeof profileId === 'number' ? `&profile_id=${profileId}` : ''}`
+    ),
+  generateReport: (payload: { report_type: ReportType; profile_id?: number }) =>
     request<ReportExport>('/reports/generate', { method: 'POST', body: JSON.stringify(payload) }),
-  downloadReport: async (reportId: number) => {
-    const response = await fetch(`${API_BASE}/api/reports/${reportId}/download`);
-    if (!response.ok) throw new Error('Could not download report');
-    return response.blob();
-  },
+  downloadReport: (reportId: number) => requestBlob(`/reports/${reportId}/download`),
 
   getAuditLog: () => request<{ events: AuditEvent[] }>('/data/audit-log'),
   deleteAllData: () => request<DataDeletionSummary>('/data/delete', { method: 'POST' }),

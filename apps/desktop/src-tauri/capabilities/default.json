@@ -8,6 +8,11 @@
     "shell:default",
     "updater:default",
     "notification:default",
+    "opener:default",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
+    "dialog:allow-save",
+    "fs:allow-write-file",
     {
       "identifier": "shell:allow-spawn",
       "allow": [

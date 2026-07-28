@@ -220,9 +220,52 @@ export type Dashboard = {
   disclaimer: string;
 };
 
+export type ReportOutlineItem = {
+  id: number;
+  title: string;
+  source_name: string;
+  source_url?: string | null;
+  identifier: string;
+  relevance_label: string;
+  status: string;
+  status_line: string;
+  why_it_surfaced?: string | null;
+};
+
+export type ReportOutlineSection = {
+  key: string;
+  title: string;
+  description: string;
+  empty_message: string;
+  count: number;
+  items: ReportOutlineItem[];
+};
+
+export type ReportOutlineGap = {
+  label: string;
+  finding_count: number;
+  examples: string[];
+};
+
+/** What a report contains — the same shape whether it exists yet or not. */
+export type ReportOutline = {
+  report_type: string;
+  report_title: string;
+  sections: ReportOutlineSection[];
+  questions: string[];
+  gaps: ReportOutlineGap[];
+  counts: {
+    findings?: number;
+    new?: number;
+    changed?: number;
+    questions?: number;
+    gaps?: number;
+    appendix?: number;
+  };
+};
+
 export type ReportSummary = {
   finding_count?: number;
-  profile_name?: string;
   report_title?: string;
   report_type?: string;
   generated_at?: string | null;
@@ -232,6 +275,8 @@ export type ReportSummary = {
   changed_count?: number;
   sections?: BriefingFindingSection[];
   blockers?: BriefingBlocker[];
+  /** Absent on reports generated before the in-app report view shipped. */
+  outline?: ReportOutline;
 };
 
 export type ReportExport = {
