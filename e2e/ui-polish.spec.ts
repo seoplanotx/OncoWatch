@@ -19,7 +19,7 @@ test('ui polish renders and computed styles are applied', async ({ page }, testI
   await page.screenshot({ path: testInfo.outputPath('01-onboarding.png'), fullPage: true });
 
   await page.getByRole('button', { name: 'Start setup' }).click();
-  await fieldTextbox('Profile name').fill('Polish profile');
+  await fieldTextbox('Who is this profile for?').fill('Polish profile');
   await fieldTextbox('Cancer type').fill('Non-small cell lung cancer');
   await page.getByRole('button', { name: 'Save and continue' }).click();
 
@@ -32,7 +32,7 @@ test('ui polish renders and computed styles are applied', async ({ page }, testI
   await page.getByRole('button', { name: 'Continue' }).click();
 
   await page.getByRole('button', { name: 'Open dashboard' }).click();
-  await expect(page.getByRole('heading', { name: "What's new for Polish profile" })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible({
     timeout: 30_000
   });
 
@@ -84,7 +84,7 @@ test('ui polish renders and computed styles are applied', async ({ page }, testI
 
   // ---- Findings page screenshot (cards, badges, filter chips, finding items) ----
   await page.goto('/#/findings');
-  await expect(page.getByRole('heading', { name: "What's New" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Discoveries' })).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(500);
   await page.screenshot({ path: testInfo.outputPath('03-findings.png'), fullPage: true });
 

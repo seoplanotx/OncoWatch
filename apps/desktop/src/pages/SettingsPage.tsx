@@ -94,7 +94,7 @@ export function SettingsPage() {
           <div className="eyebrow">Configure</div>
           <h1>Settings</h1>
           <p className="page-lede">
-            Adjust while-open monitoring, report defaults, and the real sources available in this release.
+            Adjust while-open monitoring and the real sources available in this release.
           </p>
         </div>
       </div>
@@ -126,28 +126,6 @@ export function SettingsPage() {
               value={settings.daily_run_time}
               onChange={(e) => setSettings({ ...settings, daily_run_time: e.target.value })}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="settings-report-style">Report style</label>
-            <select
-              id="settings-report-style"
-              value={settings.default_report_style}
-              onChange={(e) => setSettings({ ...settings, default_report_style: e.target.value })}
-            >
-              <option value="plain">Plain language</option>
-              <option value="clinical">Clinical terms</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="settings-report-type">Default report type</label>
-            <select
-              id="settings-report-type"
-              value={settings.default_report_length}
-              onChange={(e) => setSettings({ ...settings, default_report_length: e.target.value })}
-            >
-              <option value="daily_summary">Daily summary</option>
-              <option value="full_review">Full oncology review</option>
-            </select>
           </div>
         </div>
         <div className="button-row">

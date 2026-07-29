@@ -69,6 +69,14 @@ Owns:
   generated report as `summary_json.outline`, so the in-app report view and the
   PDF cannot drift apart. Like the rest of `summary_json`, it carries no
   identifying fields.
+- the **prep-sheet selection rule** (`_prep_top_items`): findings the user
+  saved for discussion lead "Top things to raise" in rank order, then the
+  highest-priority remaining items backfill up to the cap. Selection sits on
+  top of `rank_findings_for_briefing` — the shared ranking the dashboard uses
+  is not altered. Appointment date/clinician passed at generate time are
+  printed on the prep PDF only, never persisted.
+- per-report deletion (`delete_report`): removes the PDF and the history row,
+  and records a `report_deleted` audit event.
 
 ### Settings + secrets
 Owns:

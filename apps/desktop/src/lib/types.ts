@@ -230,6 +230,7 @@ export type ReportOutlineItem = {
   status: string;
   status_line: string;
   why_it_surfaced?: string | null;
+  saved_for_discussion?: boolean;
 };
 
 export type ReportOutlineSection = {
@@ -287,6 +288,14 @@ export type ReportExport = {
   file_path: string;
   generated_at: string;
   summary_json: ReportSummary;
+  /** Whether the PDF is still on disk — computed by the backend per request. */
+  file_exists?: boolean;
+};
+
+export type ReportList = {
+  items: ReportExport[];
+  /** Reports belonging to non-active profiles, hidden from this view. */
+  other_profiles_count: number;
 };
 
 export type ReportType = 'daily_summary' | 'full_review' | 'appointment_prep';

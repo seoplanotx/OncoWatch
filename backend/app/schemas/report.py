@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -11,6 +11,9 @@ ReportType = Literal["daily_summary", "full_review", "appointment_prep"]
 class ReportGenerateRequest(BaseModel):
     profile_id: int | None = None
     report_type: ReportType = "daily_summary"
+    # Appointment prep only; printed on the PDF, never persisted to the DB.
+    appointment_date: date | None = None
+    appointment_clinician: str | None = Field(None, max_length=120)
 
 
 class ReportOutlineItem(BaseModel):
@@ -23,6 +26,7 @@ class ReportOutlineItem(BaseModel):
     status: str = ""
     status_line: str = ""
     why_it_surfaced: str | None = None
+    saved_for_discussion: bool = False
 
 
 class ReportOutlineSection(BaseModel):
@@ -63,3 +67,11 @@ class ReportExportRead(BaseModel):
     summary_json: dict = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
+    # Computed by the routes, not stored: whether the PDF is still on disk.
+    file_exists: bool = True
+
+
+class ReportListRead(BaseModel):
+    items: list[ReportExportRead] = Field(default_factory=list)
+    # Reports belonging to non-active profiles, hidden from this view.
+    other_profiles_count: int = 0

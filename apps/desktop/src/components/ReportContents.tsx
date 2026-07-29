@@ -48,6 +48,7 @@ export function ReportContents({ outline, headingLevel = 3 }: { outline: ReportO
                 <li key={item.id}>
                   <div className="report-doc-item-title">
                     <strong>{item.title}</strong>
+                    {item.saved_for_discussion && <Badge label="You saved this" tone="success" />}
                     {item.relevance_label && <Badge label={item.relevance_label} tone="info" />}
                   </div>
                   <div className="muted">{item.status_line || item.source_name}</div>

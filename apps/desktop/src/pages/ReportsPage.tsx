@@ -3,10 +3,13 @@ import { Link } from 'react-router-dom';
 
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EmptyState } from '../components/EmptyState';
 import { PageErrorState } from '../components/PageErrorState';
 import { ReportContents, outlineSummaryLine } from '../components/ReportContents';
 import { api, ApiError } from '../lib/api';
+import { appointmentPayload, readAppointment, writeAppointment } from '../lib/appointmentPrefs';
+import type { Appointment } from '../lib/appointmentPrefs';
 import { getErrorMessage } from '../lib/errors';
 import {
   downloadInBrowser,
@@ -48,21 +51,6 @@ const INTENTS: { key: ReportType; title: string; detail: string }[] = [
     detail: 'Everything Firstlight has gathered, with an evidence appendix, for a thorough read.'
   }
 ];
-
-const APPOINTMENT_KEY = 'firstlight.appointmentPrep';
-
-type Appointment = { date: string; doctor: string };
-
-function readAppointment(): Appointment {
-  try {
-    const raw = window.localStorage.getItem(APPOINTMENT_KEY);
-    if (!raw) return { date: '', doctor: '' };
-    const parsed = JSON.parse(raw) as Partial<Appointment>;
-    return { date: typeof parsed.date === 'string' ? parsed.date : '', doctor: typeof parsed.doctor === 'string' ? parsed.doctor : '' };
-  } catch {
-    return { date: '', doctor: '' };
-  }
-}
 
 // Which key profile details are still empty — used both to acknowledge gaps
 // before generating and to phrase the readiness summary afterward.
@@ -141,6 +129,7 @@ type Phase = 'choose' | 'prep' | 'done';
 
 export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [reports, setReports] = useState<ReportExport[]>([]);
+  const [otherProfilesCount, setOtherProfilesCount] = useState(0);
   const [summary, setSummary] = useState<ClinicianSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | 'new' | null>(null);
@@ -154,6 +143,7 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [lastGenerated, setLastGenerated] = useState<ReportExport | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [missingFileIds, setMissingFileIds] = useState<number[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<ReportExport | null>(null);
   const [printTarget, setPrintTarget] = useState<ReportOutline | null>(null);
 
   const desktop = useMemo(() => isDesktopShell(), []);
@@ -163,7 +153,8 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
     setErrorMessage('');
     try {
       const result = await api.getReports();
-      setReports(result);
+      setReports(result.items);
+      setOtherProfilesCount(result.other_profiles_count);
       // Best-effort: the page still works before a profile or a run exists.
       try {
         setSummary(await api.getClinicianSummary());
@@ -182,11 +173,7 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(APPOINTMENT_KEY, JSON.stringify(appointment));
-    } catch {
-      // best-effort
-    }
+    writeAppointment(appointment);
   }, [appointment]);
 
   // Ask the backend what this report would contain, so the preview and the PDF
@@ -229,7 +216,11 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
     setErrorMessage('');
     setNotice('');
     try {
-      const result = await api.generateReport({ report_type: reportType });
+      const result = await api.generateReport({
+        report_type: reportType,
+        // The prep sheet prints the visit it is for; other types have no header.
+        ...(reportType === 'appointment_prep' ? appointmentPayload(appointment) : {})
+      });
       setLastGenerated(result);
       if (source === 'new') {
         setPhase('done');
@@ -246,6 +237,29 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
 
   function noteMissingFile(report: ReportExport) {
     setMissingFileIds((current) => (current.includes(report.id) ? current : [...current, report.id]));
+  }
+
+  async function removeReport(report: ReportExport) {
+    setBusyId(report.id);
+    setErrorMessage('');
+    setNotice('');
+    try {
+      await api.deleteReport(report.id);
+      setConfirmDelete(null);
+      if (lastGenerated?.id === report.id) {
+        setLastGenerated(null);
+        setIntent(null);
+        setPhase('choose');
+      }
+      setMissingFileIds((current) => current.filter((id) => id !== report.id));
+      setNotice('Report removed.');
+      await load({ silent: true });
+    } catch (error) {
+      setConfirmDelete(null);
+      setErrorMessage(getErrorMessage(error, 'Could not remove the report.'));
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function open(report: ReportExport) {
@@ -310,7 +324,7 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
   }
 
   function reportActions(report: ReportExport, variant: 'primary' | 'row') {
-    if (missingFileIds.includes(report.id)) {
+    if (report.file_exists === false || missingFileIds.includes(report.id)) {
       return (
         <div className="report-missing" role="status">
           <span>This file is no longer on your computer.</span>
@@ -321,6 +335,9 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
             onClick={() => void generate(report.report_type as ReportType, report.id)}
           >
             {busyId === report.id ? 'Making it again…' : 'Make it again'}
+          </button>
+          <button className="ghost-button" type="button" onClick={() => setConfirmDelete(report)}>
+            Remove from history
           </button>
         </div>
       );
@@ -401,7 +418,7 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
                     value={appointment.date}
                     onChange={(e) => setAppointment((current) => ({ ...current, date: e.target.value }))}
                   />
-                  <div className="field-hint">Kept on this computer as a reminder. It is not printed on the sheet.</div>
+                  <div className="field-hint">Printed on the prep sheet. Stored only on this computer.</div>
                 </div>
                 <div className="field">
                   <label htmlFor="appt-doctor">Doctor or clinic (optional)</label>
@@ -411,7 +428,7 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
                     onChange={(e) => setAppointment((current) => ({ ...current, doctor: e.target.value }))}
                     placeholder="e.g. Dr. Rivera"
                   />
-                  <div className="field-hint">Kept on this computer as a reminder. It is not printed on the sheet.</div>
+                  <div className="field-hint">Printed on the prep sheet. Stored only on this computer.</div>
                 </div>
               </div>
             )}
@@ -490,6 +507,13 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
         title="Report history"
         description="Reports you have made on this computer. Open, print, or save a copy of any of them."
       >
+        {otherProfilesCount > 0 && (
+          <p className="muted">
+            {otherProfilesCount === 1
+              ? '1 report from another profile is not shown — switch profiles to see it.'
+              : `${otherProfilesCount} reports from other profiles are not shown — switch profiles to see them.`}
+          </p>
+        )}
         {reports.length === 0 ? (
           <EmptyState
             title="No reports yet"
@@ -535,6 +559,14 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
                       >
                         {busyId === report.id ? 'Creating…' : 'Make a new one'}
                       </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={busyId !== null}
+                        onClick={() => setConfirmDelete(report)}
+                      >
+                        Remove…
+                      </button>
                     </div>
                   </div>
                   {expanded && outline && <ReportContents outline={outline} headingLevel={4} />}
@@ -544,6 +576,25 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
           </div>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Remove this report?"
+        message={
+          confirmDelete
+            ? `The ${reportTypeLabel(confirmDelete.report_type).toLowerCase()} from ${new Date(
+                confirmDelete.generated_at
+              ).toLocaleString()} will be removed, and its PDF will be deleted from this computer.`
+            : ''
+        }
+        confirmLabel="Remove report"
+        danger
+        busy={confirmDelete !== null && busyId === confirmDelete.id}
+        onConfirm={() => {
+          if (confirmDelete) void removeReport(confirmDelete);
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       {printTarget && (
         <div className="report-print-sheet">

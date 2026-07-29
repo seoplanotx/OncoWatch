@@ -43,15 +43,23 @@
 - `GET /api/dashboard` — latest overview and counters
 
 ## Reports
-- `GET /api/reports` — report history
+- `GET /api/reports` — report history for the active profile, as
+  `{items, other_profiles_count}`. Items carry a computed `file_exists`;
+  reports whose profile was deleted stay visible in every view.
 - `GET /api/reports/preview?report_type=&profile_id=` — what a report would contain, without rendering or storing anything
-- `POST /api/reports/generate` — generate report
+- `POST /api/reports/generate` — generate report. For `appointment_prep`,
+  optional `appointment_date` and `appointment_clinician` are printed on the
+  PDF header only — never persisted to the database or audit log.
+- `DELETE /api/reports/{report_id}` — remove the history row and delete the
+  PDF from disk (`204`; succeeds even if the file is already gone)
 - `GET /api/reports/{report_id}/download` — download report PDF
 
 `report_type` is one of `daily_summary`, `full_review`, `appointment_prep`;
 anything else is a `422`. Both the preview and the `outline` stored on a
 generated report use the same assembly, so the in-app report view and the PDF
-always agree.
+always agree. The appointment prep sheet's "Top things to raise" leads with
+findings the user saved for discussion (ranked), then backfills with the
+highest-priority remaining items up to the cap.
 
 ## MCP gateway (Claude Desktop extension)
 Read-only, consent-gated namespace used exclusively by the Firstlight Desktop
