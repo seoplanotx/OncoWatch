@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.paths import get_app_paths
@@ -35,6 +36,18 @@ def _styles():
     styles.add(ParagraphStyle(name="BodySmall", parent=styles["BodyText"], fontSize=9, leading=12))
     styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], spaceBefore=12, spaceAfter=6))
     styles.add(ParagraphStyle(name="SectionIntro", parent=styles["BodyText"], textColor=colors.HexColor("#475569")))
+    # Prep-sheet item title: dense enough that a full case stays within two pages.
+    styles.add(
+        ParagraphStyle(
+            name="PrepItemTitle",
+            parent=styles["Heading4"],
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            leading=12.5,
+            spaceBefore=6,
+            spaceAfter=1,
+        )
+    )
     return styles
 
 
@@ -233,6 +246,8 @@ def _prep_finding_status_line(finding: Finding) -> str:
     parts: list[str] = []
     status_label = {"new": "New", "changed": "Changed", "unchanged": "Tracked"}.get(finding.status, finding.status.title())
     parts.append(status_label)
+    if finding.user_action == "discuss":
+        parts.append("Saved to discuss")
     if finding.relevance_label:
         parts.append(finding.relevance_label)
     if finding.external_identifier:
@@ -247,6 +262,32 @@ def _prep_finding_status_line(finding: Finding) -> str:
         if recruitment_bucket:
             parts.append(f"Recruitment: {str(recruitment_bucket).replace('_', ' ')}")
     return " • ".join(parts)
+
+
+def _prep_top_items(findings: list[Finding]) -> list[Finding]:
+    """The prep sheet's "Top things to raise": what the user saved leads, ranked;
+    the highest-priority remaining items backfill up to the cap.
+
+    Keeps the user's curation meaningful without ever shipping a half-empty sheet.
+    Selection stays on top of ``rank_findings_for_briefing`` — the shared ranking
+    used by the dashboard is not altered.
+    """
+    ranked = rank_findings_for_briefing(findings)
+    saved = [finding for finding in ranked if finding.user_action == "discuss"]
+    rest = [finding for finding in ranked if finding.user_action != "discuss"]
+    return (saved + rest)[:APPOINTMENT_PREP_TOP_ITEMS]
+
+
+def _appointment_line(appointment_date: date | None, appointment_clinician: str | None) -> str | None:
+    """Header line naming the visit the prep sheet is for; None when nothing was entered."""
+    if appointment_date is None and not appointment_clinician:
+        return None
+    parts = ["Prepared for the appointment"]
+    if appointment_clinician:
+        parts.append(f"with {appointment_clinician}")
+    if appointment_date is not None:
+        parts.append(f"on {appointment_date.strftime('%B')} {appointment_date.day}, {appointment_date.year}")
+    return " ".join(parts)
 
 
 def _outline_item(finding: Finding) -> dict[str, Any]:
@@ -266,6 +307,7 @@ def _outline_item(finding: Finding) -> dict[str, Any]:
         "status": finding.status,
         "status_line": _prep_finding_status_line(finding),
         "why_it_surfaced": first_reason or None,
+        "saved_for_discussion": finding.user_action == "discuss",
     }
 
 
@@ -293,12 +335,17 @@ def build_report_outline(
     ]
 
     if report_type == "appointment_prep":
-        top_items = rank_findings_for_briefing(findings)[:APPOINTMENT_PREP_TOP_ITEMS]
+        top_items = _prep_top_items(findings)
+        any_saved = any(item.user_action == "discuss" for item in top_items)
         sections = [
             {
                 "key": "top_things_to_raise",
                 "title": "Top things to raise",
-                "description": "The highest-priority items from your latest check.",
+                "description": (
+                    "Your saved-for-discussion items lead, followed by the highest-priority items from your latest check."
+                    if any_saved
+                    else "The highest-priority items from your latest check."
+                ),
                 "empty_message": "No monitored findings are stored for this profile yet.",
                 "count": len(top_items),
                 "items": [_outline_item(item) for item in top_items],
@@ -341,19 +388,33 @@ def build_appointment_prep_bytes(
     findings: list[Finding],
     *,
     briefing: dict[str, Any],
+    appointment_date: date | None = None,
+    appointment_clinician: str | None = None,
 ) -> bytes:
     styles = _styles()
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=LETTER, title="Firstlight Appointment Prep Sheet")
+    # Tighter margins than the long-form reports: this sheet is one-page-first.
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=LETTER,
+        title="Firstlight Appointment Prep Sheet",
+        leftMargin=54,
+        rightMargin=54,
+        topMargin=54,
+        bottomMargin=54,
+    )
     story: list[Any] = []
 
     story.append(Paragraph("Firstlight — Appointment Prep Sheet", styles["Title"]))
     story.append(Paragraph(f"Generated: {utcnow().strftime('%Y-%m-%d %H:%M UTC')}", styles["BodySmall"]))
+    appointment_line = _appointment_line(appointment_date, appointment_clinician)
+    if appointment_line:
+        story.append(Paragraph(f"<b>{appointment_line}</b>", styles["BodyText"]))
     story.append(Paragraph(DISCLAIMER, styles["BodySmall"]))
     story.append(Spacer(1, 10))
 
     story.append(Paragraph("Case snapshot", styles["SectionTitle"]))
-    snapshot_table = Table(_trimmed_profile_rows(profile), colWidths=[150, 360])
+    snapshot_table = Table(_trimmed_profile_rows(profile), colWidths=[140, 364])
     snapshot_table.setStyle(
         TableStyle(
             [
@@ -367,17 +428,16 @@ def build_appointment_prep_bytes(
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Top things to raise", styles["SectionTitle"]))
-    top_items = rank_findings_for_briefing(findings)[:APPOINTMENT_PREP_TOP_ITEMS]
+    top_items = _prep_top_items(findings)
     if not top_items:
         story.append(Paragraph("No monitored findings are stored for this profile yet.", styles["BodyText"]))
     else:
         for finding in top_items:
-            story.append(Paragraph(finding.title, styles["Heading3"]))
+            story.append(Paragraph(finding.title, styles["PrepItemTitle"]))
             story.append(Paragraph(_prep_finding_status_line(finding), styles["BodySmall"]))
             if finding.why_it_surfaced:
                 first_reason = finding.why_it_surfaced.split("\n")[0]
                 story.append(Paragraph(f"<b>Why it surfaced:</b> {first_reason}", styles["BodySmall"]))
-            story.append(Spacer(1, 6))
     story.append(Spacer(1, 6))
 
     story.append(Paragraph("Questions for your oncology team", styles["SectionTitle"]))
@@ -399,10 +459,11 @@ def build_appointment_prep_bytes(
             )
         )
         for blocker in blockers:
-            examples = blocker.get("examples") or []
+            # Two example titles are enough to place the gap on one line or two.
+            examples = (blocker.get("examples") or [])[:2]
             example_text = f" (e.g. {', '.join(examples)})" if examples else ""
-            story.append(Paragraph(f"• {blocker['label']}{example_text}", styles["BodyText"]))
-    story.append(Spacer(1, 12))
+            story.append(Paragraph(f"• {blocker['label']}{example_text}", styles["BodySmall"]))
+    story.append(Spacer(1, 10))
 
     story.append(Paragraph(DISCLAIMER, styles["BodySmall"]))
 
@@ -416,9 +477,17 @@ def build_report_bytes(
     report_type: str,
     *,
     briefing: dict[str, Any],
+    appointment_date: date | None = None,
+    appointment_clinician: str | None = None,
 ) -> bytes:
     if report_type == "appointment_prep":
-        return build_appointment_prep_bytes(profile, findings, briefing=briefing)
+        return build_appointment_prep_bytes(
+            profile,
+            findings,
+            briefing=briefing,
+            appointment_date=appointment_date,
+            appointment_clinician=appointment_clinician,
+        )
 
     styles = _styles()
     buffer = BytesIO()
@@ -470,9 +539,26 @@ def build_report_preview(
     return build_report_outline(profile, findings, report_type, briefing=briefing)
 
 
-def write_report(session: Session, *, profile: PatientProfile, findings: list[Finding], report_type: str) -> ReportExport:
+def write_report(
+    session: Session,
+    *,
+    profile: PatientProfile,
+    findings: list[Finding],
+    report_type: str,
+    appointment_date: date | None = None,
+    appointment_clinician: str | None = None,
+) -> ReportExport:
     briefing = _briefing_for(session, profile=profile, findings=findings, report_type=report_type)
-    report_bytes = build_report_bytes(profile, findings, report_type, briefing=briefing)
+    # The appointment details go into the PDF only. They must never reach
+    # summary_json or the audit log — the clinician name is identifying.
+    report_bytes = build_report_bytes(
+        profile,
+        findings,
+        report_type,
+        briefing=briefing,
+        appointment_date=appointment_date,
+        appointment_clinician=appointment_clinician,
+    )
 
     paths = get_app_paths()
     timestamp = utcnow().strftime("%Y%m%d-%H%M%S")
@@ -538,5 +624,37 @@ def get_report(session: Session, report_id: int) -> ReportExport | None:
     return session.get(ReportExport, report_id)
 
 
-def list_reports(session: Session) -> list[ReportExport]:
-    return session.scalars(select(ReportExport).order_by(ReportExport.generated_at.desc())).all()
+def list_reports(session: Session, *, profile_id: int | None = None) -> list[ReportExport]:
+    """Report history, newest first.
+
+    With a profile_id, returns that profile's reports plus any whose profile was
+    deleted (profile_id SET NULL) — those must stay reachable from every view.
+    """
+    query = select(ReportExport).order_by(ReportExport.generated_at.desc())
+    if profile_id is not None:
+        query = query.where((ReportExport.profile_id == profile_id) | (ReportExport.profile_id.is_(None)))
+    return session.scalars(query).all()
+
+
+def count_other_profile_reports(session: Session, *, profile_id: int) -> int:
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(ReportExport)
+            .where(ReportExport.profile_id != profile_id, ReportExport.profile_id.is_not(None))
+        )
+        or 0
+    )
+
+
+def delete_report(session: Session, report: ReportExport) -> None:
+    """Remove one report: the PDF from disk (best-effort) and the history row."""
+    report_id, report_type = report.id, report.report_type
+    try:
+        Path(report.file_path).unlink(missing_ok=True)
+    except OSError:
+        # A locked or unreachable file must not strand the history row.
+        pass
+    session.delete(report)
+    session.commit()
+    record_audit_event("report_deleted", {"report_id": report_id, "report_type": report_type})

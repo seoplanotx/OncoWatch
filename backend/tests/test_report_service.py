@@ -14,6 +14,8 @@ from app.models import AppSettings, Biomarker, Finding, FindingEvidence, Monitor
 from app.services.llm_service import validate_clinician_questions
 from app.services.report_service import (
     APPOINTMENT_PREP_TOP_ITEMS,
+    _appointment_line,
+    _prep_top_items,
     _report_title,
     _trimmed_profile_rows,
     build_report_bytes,
@@ -286,6 +288,167 @@ class ReportServiceTests(unittest.TestCase):
         # Section items plus the ranked backfill that only full_review gets.
         self.assertEqual(outline["counts"]["appendix"], 3)
 
+    def test_prep_top_items_lead_with_saved_findings(self) -> None:
+        findings = [
+            build_finding(
+                profile_id=1,
+                monitoring_run_id=1,
+                title=f"Trial {index}",
+                external_identifier=f"NCT-{index}",
+                finding_type="clinical_trials",
+                status="new",
+                score=95.0 - index,
+                relevance_label="High relevance",
+                recruitment_bucket="open",
+            )
+            for index in range(APPOINTMENT_PREP_TOP_ITEMS + 3)
+        ]
+        # The weakest item by every ranking signal — but the user saved it.
+        saved = build_finding(
+            profile_id=1,
+            monitoring_run_id=1,
+            title="Saved literature update",
+            external_identifier="LIT-SAVED",
+            finding_type="literature",
+            status="unchanged",
+            score=12.0,
+            relevance_label="Worth reviewing",
+        )
+        saved.user_action = "discuss"
+        findings.append(saved)
+
+        top = _prep_top_items(findings)
+
+        self.assertEqual(top[0].external_identifier, "LIT-SAVED")
+        self.assertEqual(len(top), APPOINTMENT_PREP_TOP_ITEMS)
+
+    def test_prep_outline_flags_saved_items_and_describes_them(self) -> None:
+        profile = build_profile()
+        saved = build_finding(
+            profile_id=1,
+            monitoring_run_id=1,
+            title="Saved trial",
+            external_identifier="NCT-SAVED",
+            finding_type="clinical_trials",
+            status="new",
+            score=50.0,
+            relevance_label="High relevance",
+            recruitment_bucket="open",
+        )
+        saved.user_action = "discuss"
+        other = build_finding(
+            profile_id=1,
+            monitoring_run_id=1,
+            title="Unsaved trial",
+            external_identifier="NCT-OTHER",
+            finding_type="clinical_trials",
+            status="new",
+            score=90.0,
+            relevance_label="High relevance",
+            recruitment_bucket="open",
+        )
+        briefing = {"new_count": 2, "changed_count": 0, "blockers": []}
+
+        outline = build_report_outline(profile, [saved, other], "appointment_prep", briefing=briefing)
+
+        section = outline["sections"][0]
+        self.assertEqual(section["items"][0]["identifier"], "NCT-SAVED")
+        self.assertTrue(section["items"][0]["saved_for_discussion"])
+        self.assertFalse(section["items"][1]["saved_for_discussion"])
+        self.assertIn("saved-for-discussion", section["description"])
+        self.assertIn("Saved to discuss", section["items"][0]["status_line"])
+
+    def test_appointment_line_formats_optional_parts(self) -> None:
+        visit_date = datetime(2026, 8, 5, tzinfo=timezone.utc).date()
+        self.assertEqual(
+            _appointment_line(visit_date, "Dr. Rivera"),
+            "Prepared for the appointment with Dr. Rivera on August 5, 2026",
+        )
+        self.assertEqual(_appointment_line(None, "Dr. Rivera"), "Prepared for the appointment with Dr. Rivera")
+        self.assertEqual(_appointment_line(visit_date, None), "Prepared for the appointment on August 5, 2026")
+        self.assertIsNone(_appointment_line(None, None))
+        self.assertIsNone(_appointment_line(None, ""))
+
+    def test_appointment_details_render_in_pdf_but_never_persist(self) -> None:
+        with self.session_factory() as session:
+            profile = build_profile()
+            session.add(profile)
+            session.commit()
+            session.refresh(profile)
+
+            fake_paths = type("Paths", (), {"reports_dir": Path("/virtual/reports")})()
+            with patch("app.services.report_service.get_app_paths", return_value=fake_paths):
+                with patch("pathlib.Path.write_bytes", return_value=1024):
+                    export = write_report(
+                        session,
+                        profile=profile,
+                        findings=[],
+                        report_type="appointment_prep",
+                        appointment_date=datetime(2026, 8, 5, tzinfo=timezone.utc).date(),
+                        appointment_clinician="Dr. Rivera",
+                    )
+
+            persisted = json.dumps(export.summary_json)
+            self.assertNotIn("Rivera", persisted)
+            self.assertNotIn("2026-08-05", persisted)
+            self.assertNotIn("August", persisted)
+
+        pdf_bytes = build_report_bytes(
+            build_profile(),
+            [],
+            "appointment_prep",
+            briefing={"new_count": 0, "changed_count": 0, "blockers": []},
+            appointment_date=datetime(2026, 8, 5, tzinfo=timezone.utc).date(),
+            appointment_clinician="Dr. Rivera",
+        )
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+
+    def test_appointment_prep_stays_within_two_pages_for_a_full_case(self) -> None:
+        profile = build_profile()
+        profile.biomarkers = [
+            Biomarker(name=f"Biomarker-{index}", variant=f"Variant with a fairly long descriptive name {index}")
+            for index in range(6)
+        ]
+        findings = []
+        for index in range(APPOINTMENT_PREP_TOP_ITEMS + 4):
+            finding = build_finding(
+                profile_id=1,
+                monitoring_run_id=1,
+                title=(
+                    f"Finding {index}: a deliberately long clinical trial title describing the intervention, "
+                    "comparator, biomarker population, and phase in the style of a real registry entry"
+                ),
+                external_identifier=f"NCT-LONG-{index}",
+                finding_type="clinical_trials",
+                status="new",
+                score=90.0 - index,
+                relevance_label="High relevance",
+                recruitment_bucket="open",
+            )
+            finding.why_it_surfaced = (
+                "Matches the recorded biomarker profile and the current therapy line, and the listed sites fall "
+                "inside the configured travel radius for this profile"
+            )
+            findings.append(finding)
+        briefing = {
+            "new_count": len(findings),
+            "changed_count": 0,
+            "blockers": [
+                {
+                    "label": f"Missing detail {index} that would help confirm fit",
+                    "finding_count": 3,
+                    "examples": [findings[0].title, findings[1].title],
+                }
+                for index in range(6)
+            ],
+        }
+
+        pdf_bytes = build_report_bytes(profile, findings, "appointment_prep", briefing=briefing)
+
+        page_count = pdf_bytes.count(b"/Type /Page") - pdf_bytes.count(b"/Type /Pages")
+        self.assertGreaterEqual(page_count, 1)
+        self.assertLessEqual(page_count, 2, "appointment prep sheet should stay one-page-first (two max)")
+
     def test_report_deterministic_questions_pass_clinician_review_safety_policy(self) -> None:
         profile = build_profile()
         finding = build_finding(
@@ -345,6 +508,8 @@ class ReportServiceTests(unittest.TestCase):
 
         self.assertTrue(pdf_bytes.startswith(b"%PDF"))
         self.assertGreater(len(pdf_bytes), 1000)
+        # A light case is the typical case — it must hold the one-page promise.
+        self.assertEqual(pdf_bytes.count(b"/Type /Page") - pdf_bytes.count(b"/Type /Pages"), 1)
 
 
 if __name__ == "__main__":

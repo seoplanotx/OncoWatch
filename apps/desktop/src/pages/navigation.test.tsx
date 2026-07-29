@@ -72,7 +72,7 @@ describe('task-based navigation', () => {
     mockedApi.getFindings.mockResolvedValue({ total: 0, items: [] });
     mockedApi.getSources.mockResolvedValue([]);
     mockedApi.getClinicianSummary.mockResolvedValue(emptySummary);
-    mockedApi.getReports.mockResolvedValue([]);
+    mockedApi.getReports.mockResolvedValue({ items: [], other_profiles_count: 0 });
     mockedApi.getProfiles.mockResolvedValue([]);
     mockedApi.getActiveProfile.mockResolvedValue(null);
     mockedApi.getDashboard.mockResolvedValue({

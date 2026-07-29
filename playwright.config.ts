@@ -11,6 +11,9 @@ export default defineConfig({
   testIgnore: process.env.CI ? ['**/ui-polish.spec.ts'] : [],
   timeout: 120_000,
   fullyParallel: false,
+  // One backend, one DB: spec files must not race each other, and
+  // reports.spec.ts relies on onboarding.spec.ts having completed onboarding.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {

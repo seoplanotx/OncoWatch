@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +21,7 @@ vi.mock('../lib/api', async () => {
       getReports: vi.fn(),
       getReportPreview: vi.fn(),
       generateReport: vi.fn(),
+      deleteReport: vi.fn(),
       downloadReport: vi.fn(),
       getClinicianSummary: vi.fn()
     }
@@ -116,9 +117,10 @@ describe('ReportsPage', () => {
     vi.clearAllMocks();
     window.localStorage.clear();
     mockedDesktop.mockReturnValue(true);
-    mockedApi.getReports.mockResolvedValue([buildReport()]);
+    mockedApi.getReports.mockResolvedValue({ items: [buildReport()], other_profiles_count: 0 });
     mockedApi.getReportPreview.mockResolvedValue(buildOutline());
     mockedApi.generateReport.mockResolvedValue(buildReport());
+    mockedApi.deleteReport.mockResolvedValue(undefined);
     mockedApi.downloadReport.mockResolvedValue(new Blob(['%PDF']));
     mockedApi.getClinicianSummary.mockResolvedValue(summary);
     vi.mocked(openReportFile).mockResolvedValue(true);
@@ -234,10 +236,10 @@ describe('ReportsPage', () => {
   });
 
   it('only marks the acted-on history row as busy', async () => {
-    mockedApi.getReports.mockResolvedValue([
-      buildReport(),
-      buildReport({ id: 2, report_type: 'daily_summary', generated_at: '2026-06-20T12:00:00Z' })
-    ]);
+    mockedApi.getReports.mockResolvedValue({
+      items: [buildReport(), buildReport({ id: 2, report_type: 'daily_summary', generated_at: '2026-06-20T12:00:00Z' })],
+      other_profiles_count: 0
+    });
     let resolveGenerate: (value: ReportExport) => void = () => {};
     mockedApi.generateReport.mockReturnValue(
       new Promise<ReportExport>((resolve) => {
@@ -268,5 +270,80 @@ describe('ReportsPage', () => {
 
     await waitFor(() => expect(print).toHaveBeenCalled());
     vi.unstubAllGlobals();
+  });
+
+  it('badges the findings the user saved in the preview', async () => {
+    const outline = buildOutline();
+    outline.sections[0].items[0].saved_for_discussion = true;
+    mockedApi.getReportPreview.mockResolvedValue(outline);
+    renderPage();
+    await screen.findByText('What are you preparing for?');
+
+    await userEvent.click(screen.getByRole('button', { name: /an upcoming appointment/i }));
+
+    expect(await screen.findByText('You saved this')).toBeInTheDocument();
+  });
+
+  it('sends the appointment details with an appointment prep sheet', async () => {
+    renderPage();
+    await screen.findByText('What are you preparing for?');
+    await userEvent.click(screen.getByRole('button', { name: /an upcoming appointment/i }));
+
+    fireEvent.change(await screen.findByLabelText(/appointment date/i), { target: { value: '2026-08-05' } });
+    await userEvent.type(screen.getByLabelText(/doctor or clinic/i), 'Dr. Rivera');
+    await userEvent.click(screen.getByRole('button', { name: /create appointment prep sheet/i }));
+
+    await waitFor(() =>
+      expect(mockedApi.generateReport).toHaveBeenCalledWith({
+        report_type: 'appointment_prep',
+        appointment_date: '2026-08-05',
+        appointment_clinician: 'Dr. Rivera'
+      })
+    );
+  });
+
+  it('removes a report after an in-app confirmation', async () => {
+    renderPage();
+    await screen.findAllByText('Appointment prep sheet');
+
+    await userEvent.click(screen.getByRole('button', { name: /remove…/i }));
+    expect(await screen.findByText('Remove this report?')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /remove report/i }));
+
+    await waitFor(() => expect(mockedApi.deleteReport).toHaveBeenCalledWith(1));
+    expect(await screen.findByText('Report removed.')).toBeInTheDocument();
+  });
+
+  it('does not delete when the confirmation is cancelled', async () => {
+    renderPage();
+    await screen.findAllByText('Appointment prep sheet');
+
+    await userEvent.click(screen.getByRole('button', { name: /remove…/i }));
+    await screen.findByText('Remove this report?');
+    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    expect(mockedApi.deleteReport).not.toHaveBeenCalled();
+  });
+
+  it('marks a report whose file is gone as soon as the list loads', async () => {
+    mockedApi.getReports.mockResolvedValue({
+      items: [buildReport({ file_exists: false })],
+      other_profiles_count: 0
+    });
+    renderPage();
+    await screen.findAllByText('Appointment prep sheet');
+
+    expect(screen.getByText(/no longer on your computer/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /make it again/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remove from history/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /open pdf/i })).not.toBeInTheDocument();
+  });
+
+  it('says when reports from other profiles are hidden', async () => {
+    mockedApi.getReports.mockResolvedValue({ items: [buildReport()], other_profiles_count: 2 });
+    renderPage();
+
+    expect(await screen.findByText(/2 reports from other profiles are not shown/i)).toBeInTheDocument();
   });
 });

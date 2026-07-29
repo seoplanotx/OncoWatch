@@ -19,6 +19,7 @@ import {
   typeTone
 } from '../lib/findingPresentation';
 import { useLanguageMode } from '../lib/languageMode';
+import { appointmentPayload, readAppointment } from '../lib/appointmentPrefs';
 import {
   downloadInBrowser,
   isDesktopShell,
@@ -128,7 +129,12 @@ export function ClinicianSummaryPage({ embedded = false }: { embedded?: boolean 
     setErrorMessage('');
     setNotice('');
     try {
-      const report = await api.generateReport({ report_type: 'appointment_prep' });
+      // Same stored appointment details as the Reports flow, so both entry
+      // points produce the same sheet header.
+      const report = await api.generateReport({
+        report_type: 'appointment_prep',
+        ...appointmentPayload(readAppointment())
+      });
       setPrepSheet(report);
       setNotice('Appointment prep sheet created on this computer.');
     } catch (error) {

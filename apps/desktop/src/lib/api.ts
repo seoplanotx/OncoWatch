@@ -17,6 +17,7 @@ import type {
   PlainLanguageResponse,
   ProviderConfig,
   ReportExport,
+  ReportList,
   ReportOutline,
   ReportType,
   SourceConfig
@@ -187,13 +188,18 @@ export const api = {
       `/clinician-summary${typeof profileId === 'number' ? `?profile_id=${profileId}` : ''}`
     ),
 
-  getReports: () => request<ReportExport[]>('/reports'),
+  getReports: () => request<ReportList>('/reports'),
   getReportPreview: (reportType: ReportType, profileId?: number) =>
     request<ReportOutline>(
       `/reports/preview?report_type=${reportType}${typeof profileId === 'number' ? `&profile_id=${profileId}` : ''}`
     ),
-  generateReport: (payload: { report_type: ReportType; profile_id?: number }) =>
-    request<ReportExport>('/reports/generate', { method: 'POST', body: JSON.stringify(payload) }),
+  generateReport: (payload: {
+    report_type: ReportType;
+    profile_id?: number;
+    appointment_date?: string;
+    appointment_clinician?: string;
+  }) => request<ReportExport>('/reports/generate', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteReport: (reportId: number) => request<void>(`/reports/${reportId}`, { method: 'DELETE' }),
   downloadReport: (reportId: number) => requestBlob(`/reports/${reportId}/download`),
 
   getAuditLog: () => request<{ events: AuditEvent[] }>('/data/audit-log'),

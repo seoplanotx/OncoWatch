@@ -218,7 +218,12 @@ Three report types are included:
 Reports are generated locally and saved to the user's app report directory.
 Before creating one, Firstlight shows exactly what will be in it; afterwards you
 can read the whole report in the app, open the PDF in your usual viewer, print
-it, or save a copy wherever you like. Nothing is uploaded.
+it, save a copy wherever you like, or remove it. Nothing is uploaded.
+
+The Appointment Prep Sheet leads with the findings you saved for discussion,
+then fills remaining space with the highest-priority items, and can carry the
+visit date and doctor's name on its header (printed on the sheet only — never
+stored in the database).
 
 Each report includes:
 - patient profile snapshot

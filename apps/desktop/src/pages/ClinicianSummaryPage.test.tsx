@@ -132,4 +132,24 @@ describe('ClinicianSummaryPage', () => {
     // The old flow dead-ended here with prose; the sheet must be reachable.
     expect(screen.getByRole('button', { name: /open prep sheet/i })).toBeInTheDocument();
   });
+
+  it('sends the stored appointment details, same as the Reports flow', async () => {
+    window.localStorage.setItem(
+      'firstlight.appointmentPrep',
+      JSON.stringify({ date: '2026-08-05', doctor: 'Dr. Rivera' })
+    );
+    renderPage();
+    await screen.findByText('For your doctor');
+
+    await userEvent.click(screen.getByRole('button', { name: /make appointment prep sheet/i }));
+
+    await waitFor(() =>
+      expect(mockedApi.generateReport).toHaveBeenCalledWith({
+        report_type: 'appointment_prep',
+        appointment_date: '2026-08-05',
+        appointment_clinician: 'Dr. Rivera'
+      })
+    );
+    window.localStorage.removeItem('firstlight.appointmentPrep');
+  });
 });
