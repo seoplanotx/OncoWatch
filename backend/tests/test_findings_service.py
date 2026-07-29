@@ -414,6 +414,11 @@ class FindingsServiceTests(unittest.TestCase):
             )
             self.assertEqual(snapshot["blockers"][0]["label"], "Performance status was not available.")
             self.assertEqual(snapshot["blockers"][0]["finding_count"], 2)
+            # Identifiers ride alongside the example titles so a print layout can
+            # cite NCT/PMID instead of spending four lines on a study title.
+            blocker = snapshot["blockers"][0]
+            self.assertEqual(len(blocker["example_identifiers"]), len(blocker["examples"]))
+            self.assertTrue(all(blocker["example_identifiers"]))
 
     def test_briefing_snapshot_exposes_heartbeat_source_statuses_and_questions(self) -> None:
         with self.session_factory() as session:

@@ -78,6 +78,29 @@ Owns:
 - per-report deletion (`delete_report`): removes the PDF and the history row,
   and records a `report_deleted` audit event.
 
+The PDF **presentation layer** is deliberately self-contained rather than
+inherited from ReportLab's defaults:
+- `_styles()` builds a bare `StyleSheet1`. It does **not** use
+  `getSampleStyleSheet()`, whose `Heading3`/`Heading4` are Helvetica-BoldOblique —
+  that is where bold-italic item titles came from. A test asserts no style uses an
+  oblique or italic face.
+- `_esc()` wraps every DB-sourced string before it reaches a `Paragraph`.
+  `Paragraph` parses mini-HTML, so this is a correctness boundary, not a nicety:
+  unescaped `?tab=table&rank=1` renders as `&rank;=1` (a broken URL) and a title
+  containing `<...>` silently loses that span.
+- `_make_doc()` / `_content_width()` exist because `SimpleDocTemplate` gives its
+  `Frame` 6pt of padding on every side. Declared margins are inset by that amount
+  so the *visible* margin is the one asked for, and table widths derive from
+  `_content_width(doc)`, never `doc.width`.
+- `_kv_table()` / `_stat_strip()` size columns from the frame and set
+  `hAlign="LEFT"` explicitly — ReportLab defaults a `Table` to CENTER, so an
+  over-wide table straddles both margins instead of failing loudly.
+- `_numbered_canvas()` is a two-pass canvas (buffer pages, stamp on save) so every
+  page can print `Page N of M`; `_draw_page_furniture()` is a pure drawing function
+  over a canvas-like object, exercised in tests with a stub.
+- Findings, appendix entries, and prep-sheet items are wrapped in `KeepTogether`
+  so a title never separates from its metadata across a page break.
+
 ### Settings + secrets
 Owns:
 - daily run settings

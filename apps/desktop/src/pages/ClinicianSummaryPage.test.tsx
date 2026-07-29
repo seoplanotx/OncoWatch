@@ -91,7 +91,14 @@ const summary: ClinicianSummary = {
     }
   ],
   discussion_questions: ['Is this trial a fit given my current therapy?'],
-  data_gaps: [{ label: 'Performance status', finding_count: 1, examples: ['New recruiting EGFR trial'] }],
+  data_gaps: [
+    {
+      label: 'Performance status',
+      finding_count: 1,
+      examples: ['New recruiting EGFR trial'],
+      example_identifiers: ['NCT-NEW-OPEN']
+    }
+  ],
   disclaimer: 'Firstlight is not medical advice.'
 };
 

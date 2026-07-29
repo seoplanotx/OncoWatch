@@ -237,6 +237,11 @@ Each report includes:
 - disclaimer
 - evidence appendix
 
+Every page carries a footer with the report name, `Page N of M`, and a one-line
+caution, and continuation pages repeat the report name plus the clinical context —
+so a sheet that gets separated from the rest is still identifiable. The Full
+Oncology Review starts its evidence appendix on a fresh page.
+
 ## Safety guardrails
 
 Firstlight never presents:

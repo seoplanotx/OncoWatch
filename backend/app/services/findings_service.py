@@ -204,7 +204,9 @@ def _section_payload(
 
 
 def _build_confidence_blockers(findings: list[Finding], *, limit: int = 5) -> list[dict[str, Any]]:
-    blockers: dict[str, dict[str, Any]] = defaultdict(lambda: {"label": "", "finding_count": 0, "examples": []})
+    blockers: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"label": "", "finding_count": 0, "examples": [], "example_identifiers": []}
+    )
 
     for finding in findings:
         for gap in finding.matching_gaps:
@@ -216,6 +218,10 @@ def _build_confidence_blockers(findings: list[Finding], *, limit: int = 5) -> li
             entry["finding_count"] += 1
             if finding.title not in entry["examples"] and len(entry["examples"]) < 3:
                 entry["examples"].append(finding.title)
+                # Identifiers travel alongside the titles so a print layout can cite
+                # NCT/PMID instead of spending four lines on a study title.
+                if finding.external_identifier:
+                    entry["example_identifiers"].append(finding.external_identifier)
 
     return sorted(
         blockers.values(),

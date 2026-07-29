@@ -189,6 +189,7 @@ export type BriefingBlocker = {
   label: string;
   finding_count: number;
   examples: string[];
+  example_identifiers: string[];
 };
 
 export type BriefingSourceStatus = {
