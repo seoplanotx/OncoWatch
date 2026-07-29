@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "firstlight",
   "display_name": "Firstlight",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Ask Claude about the oncology research your local Firstlight app surfaced \u2014 read-only and de-identified.",
   "long_description": "Firstlight is a free, open-source, local-first desktop app that monitors oncology research (ClinicalTrials.gov, PubMed, openFDA, Europe PMC) for one patient's case and prepares source-backed summaries for their oncology team.\n\nThis extension gives Claude read-only access to what Firstlight found \u2014 findings with match rationale and cautions, a de-identified case outline, the clinician summary, and monitoring history \u2014 through a local, consent-gated connection. Identifying details (name, date of birth, contacts, exact location, doctor or hospital names, notes) never cross the boundary: Firstlight's fail-closed de-identification layer enforces it in code.\n\nRequires the Firstlight desktop app to be running. Turn on access and generate a connection code in Firstlight \u2192 Settings \u2192 Claude Desktop connection.\n\nFirstlight is an information monitoring tool, not medical advice: it never determines treatment, trial eligibility, or medical appropriateness, and every finding requires clinician review.",
   "author": {

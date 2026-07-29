@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 APP_NAME = "Firstlight"
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.5.0"
 MONITORING_MODE = "while_open"
 PRODUCT_SCOPE = "ClinicalTrials.gov trials, PubMed literature, Europe PMC preprints, and openFDA drug updates"
 PRIVACY_SUMMARY = "Profiles, reports, logs, and settings stay on this Mac unless you choose to share them."
