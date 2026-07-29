@@ -41,6 +41,7 @@ class BriefingBlocker(BaseModel):
     label: str
     finding_count: int
     examples: list[str] = Field(default_factory=list)
+    example_identifiers: list[str] = Field(default_factory=list)
 
 
 class BriefingSourceStatus(BaseModel):

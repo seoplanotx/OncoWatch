@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import BytesIO
 import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 
+from reportlab.platypus import Paragraph
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -14,9 +16,19 @@ from app.models import AppSettings, Biomarker, Finding, FindingEvidence, Monitor
 from app.services.llm_service import validate_clinician_questions
 from app.services.report_service import (
     APPOINTMENT_PREP_TOP_ITEMS,
+    FOOTER_DISCLAIMER,
     _appointment_line,
+    _blocker_bullet_text,
+    _content_width,
+    _context_line,
+    _draw_page_furniture,
+    _esc,
+    _join_lines,
+    _kv_table,
+    _make_doc,
     _prep_top_items,
     _report_title,
+    _styles,
     _trimmed_profile_rows,
     build_report_bytes,
     build_report_outline,
@@ -510,6 +522,191 @@ class ReportServiceTests(unittest.TestCase):
         self.assertGreater(len(pdf_bytes), 1000)
         # A light case is the typical case — it must hold the one-page promise.
         self.assertEqual(pdf_bytes.count(b"/Type /Page") - pdf_bytes.count(b"/Type /Pages"), 1)
+
+
+class ReportFormattingTests(unittest.TestCase):
+    """Presentation-layer guarantees: escaping, frame fit, and page furniture."""
+
+    def test_source_text_with_markup_characters_survives_rendering(self) -> None:
+        # Paragraph parses mini-HTML, so unescaped source text is corrupted rather
+        # than merely ugly: "&rank=1" became "&rank;=1" and "<...>" vanished.
+        styles = _styles()
+        raw = "Carboplatin & pemetrexed <first-line> in NSCLC ?tab=table&rank=1&aggFilters=status:rec"
+
+        self.assertEqual(Paragraph(_esc(raw), styles["Body"]).getPlainText(), raw)
+
+        unescaped = Paragraph(raw, styles["Body"]).getPlainText()
+        self.assertNotEqual(unescaped, raw, "fixture must exercise the characters that break")
+
+    def test_findings_with_markup_characters_render_and_keep_their_text(self) -> None:
+        profile = build_profile()
+        profile.subtype = "Adenocarcinoma & mixed <NOS>"
+        finding = build_finding(
+            profile_id=1,
+            monitoring_run_id=1,
+            title="Osimertinib <plus> bevacizumab & chemotherapy",
+            external_identifier="NCT-ESCAPE-1",
+            finding_type="clinical_trials",
+            status="new",
+            score=88.0,
+            relevance_label="May be relevant",
+            recruitment_bucket="open",
+            freshness_bucket="very_recent",
+        )
+        finding.source_url = "https://clinicaltrials.gov/study/NCT1?tab=table&rank=1&aggFilters=status:rec"
+        briefing = {
+            "new_count": 1,
+            "changed_count": 0,
+            "blockers": [],
+            "sections": [
+                {
+                    "key": "new_findings",
+                    "title": "New findings",
+                    "description": "Items first seen in the latest monitoring cycle.",
+                    "empty_message": "None.",
+                    "count": 1,
+                    "items": [finding],
+                }
+            ],
+        }
+
+        for report_type in ("daily_summary", "full_review", "appointment_prep"):
+            with self.subTest(report_type=report_type):
+                pdf_bytes = build_report_bytes(profile, [finding], report_type, briefing=briefing)
+                self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+
+    def test_key_value_table_fits_its_frame_and_stays_left_aligned(self) -> None:
+        # The old tables hardcoded widths totalling 510pt inside a 468pt frame and
+        # relied on Table's CENTER default, so they straddled both margins.
+        styles = _styles()
+        frame_width = 480.0
+        table = _kv_table([["Cancer type", "NSCLC"], ["Stage", "IV"]], frame_width=frame_width, styles=styles)
+
+        self.assertEqual(table.hAlign, "LEFT")
+        self.assertAlmostEqual(sum(table._argW), frame_width, places=6)
+
+    def test_content_width_accounts_for_reportlab_frame_padding(self) -> None:
+        doc = _make_doc(BytesIO(), report_title="Test", side_margin=60, top_margin=58, bottom_margin=54)
+        # 612pt Letter minus the 60pt visible margins we asked for.
+        self.assertAlmostEqual(_content_width(doc), 612 - 120, places=6)
+
+    def test_page_furniture_draws_identity_page_position_and_caution(self) -> None:
+        class StubCanvas:
+            def __init__(self) -> None:
+                self.strings: list[str] = []
+                self.lines: list[tuple[float, float, float, float]] = []
+                self.depth = 0
+
+            def saveState(self) -> None:
+                self.depth += 1
+
+            def restoreState(self) -> None:
+                self.depth -= 1
+
+            def setFont(self, *args: object) -> None: ...
+
+            def setFillColor(self, *args: object) -> None: ...
+
+            def setStrokeColor(self, *args: object) -> None: ...
+
+            def setLineWidth(self, *args: object) -> None: ...
+
+            def line(self, x1: float, y1: float, x2: float, y2: float) -> None:
+                self.lines.append((x1, y1, x2, y2))
+
+            def drawString(self, x: float, y: float, text: str) -> None:
+                self.strings.append(text)
+
+            def drawRightString(self, x: float, y: float, text: str) -> None:
+                self.strings.append(text)
+
+        first = StubCanvas()
+        _draw_page_furniture(
+            first,
+            page_number=1,
+            page_count=3,
+            report_title="Daily Summary Report",
+            context_line="NSCLC · Adenocarcinoma",
+            page_width=612,
+            page_height=792,
+            left_margin=60,
+            right_margin=60,
+        )
+        self.assertIn("Firstlight — Daily Summary Report", first.strings)
+        self.assertIn("Page 1 of 3", first.strings)
+        self.assertIn(FOOTER_DISCLAIMER, first.strings)
+        self.assertEqual(first.depth, 0, "canvas state must be restored")
+        # Page 1 carries the full title block, so no running header.
+        self.assertNotIn("NSCLC · Adenocarcinoma", first.strings)
+        self.assertEqual(len(first.lines), 1)
+
+        later = StubCanvas()
+        _draw_page_furniture(
+            later,
+            page_number=2,
+            page_count=3,
+            report_title="Daily Summary Report",
+            context_line="NSCLC · Adenocarcinoma",
+            page_width=612,
+            page_height=792,
+            left_margin=60,
+            right_margin=60,
+        )
+        self.assertIn("Page 2 of 3", later.strings)
+        self.assertIn("NSCLC · Adenocarcinoma", later.strings)
+        self.assertEqual(len(later.lines), 2, "continuation pages also rule off the header")
+
+    def test_context_line_is_bounded(self) -> None:
+        profile = build_profile()
+        profile.stage_or_context = "Stage IV " + "extremely verbose clinical context " * 4
+        line = _context_line(profile)
+        self.assertLessEqual(len(line), 66)
+        self.assertTrue(line.endswith("…"))
+
+    def test_join_lines_does_not_double_up_punctuation(self) -> None:
+        self.assertEqual(
+            _join_lines(["Eligibility was not evaluated.", "Site may be far."]),
+            "Eligibility was not evaluated. Site may be far.",
+        )
+        self.assertEqual(
+            _join_lines(["Matched cancer type", "Matched biomarker"]),
+            "Matched cancer type; Matched biomarker",
+        )
+        self.assertEqual(_join_lines(["  ", "Only one."]), "Only one.")
+
+    def test_blocker_bullets_cite_identifiers_rather_than_full_titles(self) -> None:
+        # Two full oncology titles per gap ran to four lines each and buried the
+        # section; identifiers are both shorter and directly actionable.
+        long_title = "A Phase 3 Randomized Open-Label Study of Amivantamab Plus Lazertinib Versus Chemotherapy"
+        text = _blocker_bullet_text(
+            {
+                "label": "ECOG performance status was not available.",
+                "finding_count": 5,
+                "examples": [long_title],
+                "example_identifiers": ["NCT05388669", "PMID39218447", "NCT04891172"],
+            }
+        )
+
+        self.assertIn("ECOG performance status was not available.", text)
+        self.assertIn("5 findings", text)
+        self.assertIn("NCT05388669", text)
+        self.assertIn("PMID39218447", text)
+        self.assertNotIn("NCT04891172", text, "at most two identifiers keep the bullet on one line")
+        self.assertNotIn(long_title, text)
+
+    def test_blocker_bullet_singularises_a_single_finding(self) -> None:
+        text = _blocker_bullet_text({"label": "Recent imaging date", "finding_count": 1, "example_identifiers": []})
+        self.assertIn("1 finding", text)
+        self.assertNotIn("1 findings", text)
+
+    def test_styles_never_use_an_oblique_face(self) -> None:
+        # getSampleStyleSheet's Heading3/Heading4 are Helvetica-BoldOblique, which is
+        # why every finding title used to render bold-italic.
+        styles = _styles()
+        for name in styles.byName:
+            with self.subTest(style=name):
+                self.assertNotIn("Oblique", styles[name].fontName)
+                self.assertNotIn("Italic", styles[name].fontName)
 
 
 if __name__ == "__main__":
