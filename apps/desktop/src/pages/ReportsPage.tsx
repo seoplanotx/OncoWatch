@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import { PageErrorState } from '../components/PageErrorState';
-import { api } from '../lib/api';
+import { ReportContents, outlineSummaryLine } from '../components/ReportContents';
+import { api, ApiError } from '../lib/api';
 import { getErrorMessage } from '../lib/errors';
-import { fileDirectory, openLocalPath } from '../lib/external';
-import type { ClinicianSummary, Finding, ReportExport, ReportType } from '../lib/types';
+import {
+  downloadInBrowser,
+  isDesktopShell,
+  openReportFile,
+  revealLabel,
+  revealReportFile,
+  saveReportCopy,
+  suggestedFileName
+} from '../lib/reportFile';
+import type { ClinicianSummary, ReportExport, ReportOutline, ReportType } from '../lib/types';
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
   daily_summary: 'Daily summary report',
@@ -25,7 +35,7 @@ const INTENTS: { key: ReportType; title: string; detail: string }[] = [
   {
     key: 'appointment_prep',
     title: 'An upcoming appointment',
-    detail: 'A focused one-page sheet to bring to a visit — the saved findings and questions in one place.'
+    detail: 'A focused one-page sheet to bring to a visit — the top things to raise and questions in one place.'
   },
   {
     key: 'daily_summary',
@@ -66,36 +76,99 @@ function missingProfileDetails(summary: ClinicianSummary | null): string[] {
   return missing;
 }
 
+/**
+ * The contents of an already-generated report. Reports made before the in-app
+ * view shipped have no stored outline, so fall back to their briefing sections.
+ */
+function outlineFor(report: ReportExport): ReportOutline | null {
+  const summary = report.summary_json || {};
+  if (summary.outline) return summary.outline;
+  if (!summary.sections) return null;
+  return {
+    report_type: report.report_type,
+    report_title: summary.report_title || reportTypeLabel(report.report_type),
+    sections: summary.sections.map((section) => ({
+      key: section.key,
+      title: section.title,
+      description: section.description,
+      empty_message: section.empty_message,
+      count: section.count,
+      items: section.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        source_name: item.source_name,
+        source_url: item.source_url,
+        identifier: item.external_identifier,
+        relevance_label: item.relevance_label,
+        status: item.status,
+        status_line: [item.source_name, item.relevance_label].filter(Boolean).join(' • '),
+        why_it_surfaced: (item.why_it_surfaced || '').split('\n')[0] || null
+      }))
+    })),
+    questions: [],
+    gaps: (summary.blockers || []).map((blocker) => ({
+      label: blocker.label,
+      finding_count: blocker.finding_count,
+      examples: blocker.examples
+    })),
+    counts: {
+      findings: summary.finding_count,
+      new: summary.new_count,
+      changed: summary.changed_count
+    }
+  };
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return '';
+  const minutes = Math.round((Date.now() - then.getTime()) / 60_000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  if (days <= 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return then.toLocaleDateString();
+}
+
+function fileName(path: string): string {
+  const idx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  return idx >= 0 ? path.slice(idx + 1) : path;
+}
+
 type Phase = 'choose' | 'prep' | 'done';
 
 export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [reports, setReports] = useState<ReportExport[]>([]);
   const [summary, setSummary] = useState<ClinicianSummary | null>(null);
-  const [savedFindings, setSavedFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState<number | 'new' | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [notice, setNotice] = useState('');
 
   const [phase, setPhase] = useState<Phase>('choose');
   const [intent, setIntent] = useState<ReportType | null>(null);
+  const [preview, setPreview] = useState<ReportOutline | null>(null);
   const [appointment, setAppointment] = useState<Appointment>(readAppointment);
   const [lastGenerated, setLastGenerated] = useState<ReportExport | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [missingFileIds, setMissingFileIds] = useState<number[]>([]);
+  const [printTarget, setPrintTarget] = useState<ReportOutline | null>(null);
 
-  async function load() {
-    setLoading(true);
+  const desktop = useMemo(() => isDesktopShell(), []);
+
+  async function load(options: { silent?: boolean } = {}) {
+    if (!options.silent) setLoading(true);
     setErrorMessage('');
     try {
       const result = await api.getReports();
       setReports(result);
-      // Findings and the clinician summary drive the guided prep; they are
-      // best-effort so the page still works before a profile or run exists.
+      // Best-effort: the page still works before a profile or a run exists.
       try {
-        const [findingsResult, clinicianSummary] = await Promise.all([api.getFindings(), api.getClinicianSummary()]);
-        setSavedFindings(findingsResult.items.filter((item) => item.user_action === 'discuss'));
-        setSummary(clinicianSummary);
+        setSummary(await api.getClinicianSummary());
       } catch {
-        // Prep still renders with whatever loaded.
+        setSummary(null);
       }
     } catch (error) {
       setErrorMessage(getErrorMessage(error, 'Could not load local reports.'));
@@ -116,6 +189,34 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
     }
   }, [appointment]);
 
+  // Ask the backend what this report would contain, so the preview and the PDF
+  // are built from the same rules.
+  useEffect(() => {
+    if (phase !== 'prep' || !intent) return;
+    let cancelled = false;
+    setPreview(null);
+    api
+      .getReportPreview(intent)
+      .then((result) => {
+        if (!cancelled) setPreview(result);
+      })
+      .catch(() => {
+        if (!cancelled) setPreview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, intent]);
+
+  // Render the print sheet first, then hand the page to the OS print dialog.
+  useEffect(() => {
+    if (!printTarget) return;
+    document.body.classList.add('printing-report');
+    window.print();
+    document.body.classList.remove('printing-report');
+    setPrintTarget(null);
+  }, [printTarget]);
+
   function startIntent(next: ReportType) {
     setIntent(next);
     setPhase('prep');
@@ -123,83 +224,144 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
     setErrorMessage('');
   }
 
-  async function generate() {
-    if (!intent) return;
-    setBusy(true);
+  async function generate(reportType: ReportType, source: 'new' | number) {
+    setBusyId(source);
     setErrorMessage('');
     setNotice('');
     try {
-      const result = await api.generateReport({ report_type: intent });
+      const result = await api.generateReport({ report_type: reportType });
       setLastGenerated(result);
-      setPhase('done');
-      await load();
+      if (source === 'new') {
+        setPhase('done');
+      } else {
+        setNotice(`New ${reportTypeLabel(reportType).toLowerCase()} created.`);
+      }
+      await load({ silent: true });
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, 'Could not generate the report.'));
+      setErrorMessage(getErrorMessage(error, 'Could not create the report.'));
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   }
 
-  async function regenerate(reportType: string) {
-    setBusy(true);
+  function noteMissingFile(report: ReportExport) {
+    setMissingFileIds((current) => (current.includes(report.id) ? current : [...current, report.id]));
+  }
+
+  async function open(report: ReportExport) {
     setErrorMessage('');
     setNotice('');
+    if (await openReportFile(report.file_path)) return;
+    setErrorMessage(`Could not open the PDF. It is saved on this computer at: ${report.file_path}`);
+  }
+
+  async function reveal(report: ReportExport) {
+    setErrorMessage('');
+    setNotice('');
+    if (await revealReportFile(report.file_path)) return;
+    setErrorMessage(`Saved on this computer at: ${report.file_path}`);
+  }
+
+  async function saveCopy(report: ReportExport) {
+    setErrorMessage('');
+    setNotice('');
+    const suggested = suggestedFileName(report.report_type, report.generated_at);
     try {
-      await api.generateReport({ report_type: reportType });
-      setNotice(`${reportTypeLabel(reportType)} updated locally.`);
-      await load();
+      const result = await saveReportCopy(suggested, () => api.downloadReport(report.id));
+      if (result === 'saved') setNotice('Saved a copy.');
+      if (result === 'unavailable') {
+        downloadInBrowser(await api.downloadReport(report.id), suggested);
+        setNotice(`Saved to your downloads as ${suggested}.`);
+      }
     } catch (error) {
-      setErrorMessage(getErrorMessage(error, 'Could not generate the report.'));
-    } finally {
-      setBusy(false);
+      if (error instanceof ApiError && error.status === 404) {
+        noteMissingFile(report);
+        return;
+      }
+      setErrorMessage(getErrorMessage(error, 'Could not save a copy of the PDF.'));
     }
   }
 
-  async function openLocation(report: ReportExport) {
+  async function download(report: ReportExport) {
     setErrorMessage('');
     setNotice('');
-    const opened = await openLocalPath(fileDirectory(report.file_path));
-    if (!opened) {
-      setNotice(`Saved on this computer at: ${report.file_path}`);
-    }
-  }
-
-  async function download(reportId: number, reportType: string) {
-    setErrorMessage('');
-    setNotice('');
+    const filename = suggestedFileName(report.report_type, report.generated_at);
     try {
-      const blob = await api.downloadReport(reportId);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `firstlight-${reportType.replace(/_/g, '-')}.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-      setNotice('PDF download started.');
+      downloadInBrowser(await api.downloadReport(report.id), filename);
+      setNotice(`Saved to your downloads as ${filename}.`);
     } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        noteMissingFile(report);
+        return;
+      }
       setErrorMessage(getErrorMessage(error, 'Could not download the PDF.'));
     }
   }
 
-  const questions = summary?.discussion_questions ?? [];
-  const missingDetails = useMemo(() => missingProfileDetails(summary), [summary]);
-  const intentLabel = intent ? reportTypeLabel(intent) : '';
+  function print(report: ReportExport) {
+    const outline = outlineFor(report);
+    if (!outline) {
+      setErrorMessage('This report was made before in-app printing. Open the PDF and print from there.');
+      return;
+    }
+    setErrorMessage('');
+    setNotice('');
+    setPrintTarget(outline);
+  }
 
-  const readiness = useMemo(() => {
-    const parts = [
-      `Includes ${savedFindings.length} saved ${savedFindings.length === 1 ? 'finding' : 'findings'} and ${questions.length} ${questions.length === 1 ? 'question' : 'questions'}.`
-    ];
-    if (missingDetails.length > 0) {
-      parts.push(
-        `${missingDetails.join(', ')} ${missingDetails.length === 1 ? 'is' : 'are'} still missing and may affect trial matching.`
+  function reportActions(report: ReportExport, variant: 'primary' | 'row') {
+    if (missingFileIds.includes(report.id)) {
+      return (
+        <div className="report-missing" role="status">
+          <span>This file is no longer on your computer.</span>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={busyId !== null}
+            onClick={() => void generate(report.report_type as ReportType, report.id)}
+          >
+            {busyId === report.id ? 'Making it again…' : 'Make it again'}
+          </button>
+        </div>
       );
     }
-    return parts.join(' ');
-  }, [savedFindings.length, questions.length, missingDetails]);
+
+    const openClass = variant === 'primary' ? 'primary-button' : 'secondary-button';
+    return (
+      <div className="button-row">
+        {desktop ? (
+          <>
+            <button className={openClass} type="button" onClick={() => void open(report)}>
+              Open PDF
+            </button>
+            <button className="secondary-button" type="button" onClick={() => void saveCopy(report)}>
+              Save a copy…
+            </button>
+          </>
+        ) : (
+          <button className={openClass} type="button" onClick={() => void download(report)}>
+            Download PDF
+          </button>
+        )}
+        <button className="ghost-button" type="button" onClick={() => print(report)}>
+          Print
+        </button>
+        {desktop && (
+          <button className="ghost-button" type="button" onClick={() => void reveal(report)}>
+            {revealLabel()}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const missingDetails = useMemo(() => missingProfileDetails(summary), [summary]);
+  const intentLabel = intent ? reportTypeLabel(intent) : '';
+  const generatedOutline = lastGenerated ? outlineFor(lastGenerated) : null;
 
   if (loading) return <div className="loading-block" role="status">Loading reports…</div>;
   if (errorMessage && reports.length === 0 && phase === 'choose') {
-    return <PageErrorState title="Reports unavailable" message={errorMessage} onRetry={load} />;
+    return <PageErrorState title="Reports unavailable" message={errorMessage} onRetry={() => void load()} />;
   }
 
   const content = (
@@ -208,7 +370,7 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
       {errorMessage && <div className="callout callout-caution" role="alert">{errorMessage}</div>}
 
       {phase === 'choose' && (
-        <Card title="What are you preparing for?" description="Pick one to start — you can review everything before it is created.">
+        <Card title="What are you preparing for?" description="Pick one to start — you can read the whole report before it is created.">
           <div className="intent-grid">
             {INTENTS.map((option) => (
               <button key={option.key} type="button" className="intent-card" onClick={() => startIntent(option.key)}>
@@ -225,8 +387,8 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
 
       {phase === 'prep' && intent && (
         <Card
-          title={`Getting ready: ${intentLabel}`}
-          description="A quick look at what will be included before Firstlight creates the PDF."
+          title={`What will be in this report: ${intentLabel}`}
+          description="Everything below goes into the PDF. Nothing leaves this computer."
         >
           <div className="stack">
             {intent === 'appointment_prep' && (
@@ -239,7 +401,7 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
                     value={appointment.date}
                     onChange={(e) => setAppointment((current) => ({ ...current, date: e.target.value }))}
                   />
-                  <div className="field-hint">Stored on this computer, just for your reference.</div>
+                  <div className="field-hint">Kept on this computer as a reminder. It is not printed on the sheet.</div>
                 </div>
                 <div className="field">
                   <label htmlFor="appt-doctor">Doctor or clinic (optional)</label>
@@ -249,45 +411,18 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
                     onChange={(e) => setAppointment((current) => ({ ...current, doctor: e.target.value }))}
                     placeholder="e.g. Dr. Rivera"
                   />
-                  <div className="field-hint">Stored on this computer, just for your reference.</div>
+                  <div className="field-hint">Kept on this computer as a reminder. It is not printed on the sheet.</div>
                 </div>
               </div>
             )}
 
-            <div className="prep-section">
-              <div className="prep-section-head">
-                <strong>Findings you saved to discuss</strong>
-                <span className="section-counter">{savedFindings.length} included</span>
-              </div>
-              {savedFindings.length === 0 ? (
-                <p className="muted">
-                  You have not saved any findings yet. You can still create the report, or go to{' '}
-                  <Link to="/discoveries">Discoveries</Link> to save the ones worth raising.
-                </p>
-              ) : (
-                <ul className="prep-list">
-                  {savedFindings.map((item) => (
-                    <li key={item.id}>{item.title}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="prep-section">
-              <div className="prep-section-head">
-                <strong>Questions to bring</strong>
-                <span className="section-counter">{questions.length} suggested</span>
-              </div>
-              {questions.length === 0 ? (
-                <p className="muted">No suggested questions yet. Run a check to generate source-backed questions.</p>
-              ) : (
-                <ul className="prep-list">
-                  {questions.map((question) => (
-                    <li key={question}>{question}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {preview ? (
+              <ReportContents outline={preview} headingLevel={4} />
+            ) : (
+              <p className="muted" role="status">
+                Working out what to include…
+              </p>
+            )}
 
             {missingDetails.length > 0 && (
               <div className="callout" role="status">
@@ -302,8 +437,13 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
               <button className="ghost-button" type="button" onClick={() => setPhase('choose')}>
                 Back
               </button>
-              <button className="primary-button" type="button" disabled={busy} onClick={() => void generate()}>
-                {busy ? 'Creating…' : `Create ${intentLabel}`}
+              <button
+                className="primary-button"
+                type="button"
+                disabled={busyId !== null}
+                onClick={() => void generate(intent, 'new')}
+              >
+                {busyId === 'new' ? 'Creating…' : `Create ${intentLabel.toLowerCase()}`}
               </button>
             </div>
           </div>
@@ -311,11 +451,14 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
       )}
 
       {phase === 'done' && lastGenerated && (
-        <Card title="Your report is ready" description="Created on this computer and added to your history below.">
+        <Card
+          title="Your report is ready"
+          description="Saved on this computer. Open it, print it, or save a copy wherever you like."
+        >
           <div className="stack">
             <div className="report-ready">
               <strong>{reportTypeLabel(lastGenerated.report_type)}</strong>
-              <p className="muted">{readiness}</p>
+              <p className="muted">{fileName(lastGenerated.file_path)}</p>
               {intent === 'appointment_prep' && (appointment.date || appointment.doctor) && (
                 <p className="muted">
                   For your appointment
@@ -324,17 +467,9 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
                 </p>
               )}
             </div>
+            {reportActions(lastGenerated, 'primary')}
+            {generatedOutline && <ReportContents outline={generatedOutline} headingLevel={4} />}
             <div className="button-row">
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => void download(lastGenerated.id, lastGenerated.report_type)}
-              >
-                Download PDF
-              </button>
-              <button className="secondary-button" type="button" onClick={() => void openLocation(lastGenerated)}>
-                Open file location
-              </button>
               <button
                 className="ghost-button"
                 type="button"
@@ -351,37 +486,72 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
         </Card>
       )}
 
-      <Card title="Report history" description="Reports you have made on this computer. Open, save, or refresh any of them.">
+      <Card
+        title="Report history"
+        description="Reports you have made on this computer. Open, print, or save a copy of any of them."
+      >
         {reports.length === 0 ? (
-          <EmptyState title="No reports yet" message="Start above to create your first report." />
+          <EmptyState
+            title="No reports yet"
+            message="Start above to create your first report — it is built from the findings Firstlight has gathered."
+          />
         ) : (
           <div className="finding-list">
-            {reports.map((report) => (
-              <article className="finding-item" key={report.id}>
-                <div className="finding-topline">
-                  <div>
-                    <strong>{reportTypeLabel(report.report_type)}</strong>
-                    <div className="muted">{new Date(report.generated_at).toLocaleString()}</div>
+            {reports.map((report) => {
+              const outline = outlineFor(report);
+              const expanded = expandedId === report.id;
+              return (
+                <article className="finding-item" key={report.id}>
+                  <div className="finding-topline">
+                    <div>
+                      <div className="report-row-title">
+                        <strong>{reportTypeLabel(report.report_type)}</strong>
+                        {lastGenerated?.id === report.id && <Badge label="Just created" tone="success" />}
+                      </div>
+                      <div className="muted" title={new Date(report.generated_at).toLocaleString()}>
+                        {relativeTime(report.generated_at)}
+                        {outline ? ` · ${outlineSummaryLine(outline)}` : ''}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="finding-footer">
-                  <div className="finding-actions">
-                    <button className="secondary-button" onClick={() => void download(report.id, report.report_type)}>
-                      Download PDF
-                    </button>
-                    <button className="ghost-button" onClick={() => void openLocation(report)}>
-                      Open file location
-                    </button>
-                    <button type="button" className="ghost-button" disabled={busy} onClick={() => void regenerate(report.report_type)}>
-                      {busy ? 'Updating…' : 'Update this report'}
-                    </button>
+                  <div className="finding-footer">
+                    <div className="finding-actions">
+                      {reportActions(report, 'row')}
+                      {outline && (
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          aria-expanded={expanded}
+                          onClick={() => setExpandedId(expanded ? null : report.id)}
+                        >
+                          {expanded ? 'Hide contents' : "What's inside"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={busyId !== null}
+                        onClick={() => void generate(report.report_type as ReportType, report.id)}
+                      >
+                        {busyId === report.id ? 'Creating…' : 'Make a new one'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                  {expanded && outline && <ReportContents outline={outline} headingLevel={4} />}
+                </article>
+              );
+            })}
           </div>
         )}
       </Card>
+
+      {printTarget && (
+        <div className="report-print-sheet">
+          <h1>Firstlight — {printTarget.report_title}</h1>
+          <p className="muted">Generated on this computer · {new Date().toLocaleString()}</p>
+          <ReportContents outline={printTarget} />
+        </div>
+      )}
     </>
   );
 
@@ -396,8 +566,8 @@ export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
           <div className="eyebrow">Generated on this computer</div>
           <h1>Reports</h1>
           <p className="page-lede">
-            Start with what you are preparing for. Firstlight builds a clean PDF from your saved findings and questions,
-            all on this computer.
+            Start with what you are preparing for. Firstlight builds a PDF you can read here, print, or hand to your
+            oncology team — all on this computer.
           </p>
         </div>
       </div>

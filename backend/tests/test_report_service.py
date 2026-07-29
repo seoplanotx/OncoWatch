@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -12,9 +13,11 @@ from app.db.base import Base
 from app.models import AppSettings, Biomarker, Finding, FindingEvidence, MonitoringRun, PatientProfile
 from app.services.llm_service import validate_clinician_questions
 from app.services.report_service import (
+    APPOINTMENT_PREP_TOP_ITEMS,
     _report_title,
     _trimmed_profile_rows,
     build_report_bytes,
+    build_report_outline,
     _deterministic_questions,
     write_report,
 )
@@ -191,6 +194,97 @@ class ReportServiceTests(unittest.TestCase):
             # The patient name must not be persisted in the DB summary JSON.
             self.assertNotIn("profile_name", export.summary_json)
             self.assertEqual(export.summary_json["report_title"], "Daily Summary Report")
+
+            # The outline drives the in-app view of this report.
+            outline = export.summary_json["outline"]
+            self.assertEqual(outline["report_type"], "daily_summary")
+            self.assertEqual(outline["report_title"], "Daily Summary Report")
+            self.assertEqual(
+                [section["key"] for section in outline["sections"]],
+                ["new_findings", "changed_findings", "top_trial_matches", "top_literature_updates"],
+            )
+            self.assertEqual(outline["sections"][0]["items"][0]["title"], "New recruiting EGFR trial")
+            self.assertEqual(outline["sections"][0]["items"][0]["identifier"], "NCT-NEW-OPEN")
+            self.assertTrue(outline["questions"])
+            self.assertEqual(outline["counts"]["findings"], 2)
+            self.assertEqual(outline["counts"]["new"], 1)
+            self.assertEqual(outline["counts"]["changed"], 1)
+            # The no-identifying-data rule covers the outline too.
+            self.assertNotIn("profile_name", json.dumps(outline))
+            self.assertNotIn(profile.profile_name, json.dumps(outline))
+
+    def test_appointment_prep_outline_caps_top_things_to_raise(self) -> None:
+        profile = build_profile()
+        findings = [
+            build_finding(
+                profile_id=1,
+                monitoring_run_id=1,
+                title=f"Trial {index}",
+                external_identifier=f"NCT-{index}",
+                finding_type="clinical_trials",
+                status="new",
+                score=90.0 - index,
+                relevance_label="High relevance",
+                recruitment_bucket="open",
+            )
+            for index in range(APPOINTMENT_PREP_TOP_ITEMS + 4)
+        ]
+        briefing = {
+            "new_count": len(findings),
+            "changed_count": 0,
+            "blockers": [{"label": "Performance status", "finding_count": 3, "examples": ["Trial 0"]}],
+        }
+
+        outline = build_report_outline(profile, findings, "appointment_prep", briefing=briefing)
+
+        self.assertEqual([section["key"] for section in outline["sections"]], ["top_things_to_raise"])
+        self.assertEqual(len(outline["sections"][0]["items"]), APPOINTMENT_PREP_TOP_ITEMS)
+        # The prep sheet has no evidence appendix — that is what full_review is for.
+        self.assertEqual(outline["counts"]["appendix"], 0)
+        self.assertLessEqual(len(outline["questions"]), 5)
+        self.assertEqual(outline["gaps"][0]["label"], "Performance status")
+
+    def test_full_review_outline_counts_the_evidence_appendix(self) -> None:
+        profile = build_profile()
+        findings = [
+            build_finding(
+                profile_id=1,
+                monitoring_run_id=1,
+                title=f"Trial {index}",
+                external_identifier=f"NCT-{index}",
+                finding_type="clinical_trials",
+                status="new",
+                score=90.0 - index,
+                relevance_label="High relevance",
+                recruitment_bucket="open",
+            )
+            for index in range(3)
+        ]
+        for index, finding in enumerate(findings):
+            finding.id = index + 1
+        briefing = {
+            "new_count": 3,
+            "changed_count": 0,
+            "sections": [
+                {
+                    "key": "new_findings",
+                    "title": "New findings",
+                    "description": "Items first seen in the latest monitoring cycle.",
+                    "empty_message": "No new findings were detected in the latest run.",
+                    "count": 3,
+                    "items": findings[:2],
+                }
+            ],
+            "blockers": [],
+        }
+
+        outline = build_report_outline(profile, findings, "full_review", briefing=briefing)
+
+        self.assertEqual(outline["report_title"], "Full Oncology Review Report")
+        self.assertEqual(len(outline["sections"][0]["items"]), 2)
+        self.assertEqual(outline["sections"][0]["count"], 3)
+        # Section items plus the ranked backfill that only full_review gets.
+        self.assertEqual(outline["counts"]["appendix"], 3)
 
     def test_report_deterministic_questions_pass_clinician_review_safety_policy(self) -> None:
         profile = build_profile()

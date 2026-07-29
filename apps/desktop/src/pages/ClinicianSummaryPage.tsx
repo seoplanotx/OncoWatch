@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Badge } from '../components/Badge';
 import { BriefingBlockers } from '../components/BriefingBlockers';
@@ -18,7 +19,14 @@ import {
   typeTone
 } from '../lib/findingPresentation';
 import { useLanguageMode } from '../lib/languageMode';
-import type { CaseHeader, ClinicianSummary, CondensedFinding } from '../lib/types';
+import {
+  downloadInBrowser,
+  isDesktopShell,
+  openReportFile,
+  saveReportCopy,
+  suggestedFileName
+} from '../lib/reportFile';
+import type { CaseHeader, ClinicianSummary, CondensedFinding, ReportExport } from '../lib/types';
 
 function caseHeaderRows(header: CaseHeader): { label: string; value: string }[] {
   const rows: { label: string; value: string }[] = [
@@ -96,6 +104,7 @@ export function ClinicianSummaryPage({ embedded = false }: { embedded?: boolean 
   const [errorMessage, setErrorMessage] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [prepSheet, setPrepSheet] = useState<ReportExport | null>(null);
 
   async function load() {
     setLoading(true);
@@ -119,12 +128,32 @@ export function ClinicianSummaryPage({ embedded = false }: { embedded?: boolean 
     setErrorMessage('');
     setNotice('');
     try {
-      await api.generateReport({ report_type: 'appointment_prep' });
-      setNotice('Appointment prep sheet generated locally. Find it on the Reports page to print or download.');
+      const report = await api.generateReport({ report_type: 'appointment_prep' });
+      setPrepSheet(report);
+      setNotice('Appointment prep sheet created on this computer.');
     } catch (error) {
       setErrorMessage(getErrorMessage(error, 'Could not generate the appointment prep sheet.'));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function openPrepSheet(report: ReportExport) {
+    if (await openReportFile(report.file_path)) return;
+    setErrorMessage(`Could not open the PDF. It is saved on this computer at: ${report.file_path}`);
+  }
+
+  async function savePrepSheet(report: ReportExport) {
+    const suggested = suggestedFileName(report.report_type, report.generated_at);
+    try {
+      const result = await saveReportCopy(suggested, () => api.downloadReport(report.id));
+      if (result === 'saved') setNotice('Saved a copy.');
+      if (result === 'unavailable') {
+        downloadInBrowser(await api.downloadReport(report.id), suggested);
+        setNotice(`Saved to your downloads as ${suggested}.`);
+      }
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, 'Could not save a copy of the PDF.'));
     }
   }
 
@@ -143,9 +172,31 @@ export function ClinicianSummaryPage({ embedded = false }: { embedded?: boolean 
 
   const actions = (
     <>
-      <button type="button" className="secondary-button" disabled={busy} onClick={() => void makePrepSheet()}>
-        {busy ? 'Creating…' : 'Make appointment prep sheet'}
-      </button>
+      {prepSheet ? (
+        <>
+          {isDesktopShell() ? (
+            <>
+              <button type="button" className="secondary-button" onClick={() => void openPrepSheet(prepSheet)}>
+                Open prep sheet
+              </button>
+              <button type="button" className="ghost-button" onClick={() => void savePrepSheet(prepSheet)}>
+                Save a copy…
+              </button>
+            </>
+          ) : (
+            <button type="button" className="secondary-button" onClick={() => void savePrepSheet(prepSheet)}>
+              Download prep sheet
+            </button>
+          )}
+          <Link className="ghost-button" to="/reports">
+            All reports
+          </Link>
+        </>
+      ) : (
+        <button type="button" className="secondary-button" disabled={busy} onClick={() => void makePrepSheet()}>
+          {busy ? 'Creating…' : 'Make appointment prep sheet'}
+        </button>
+      )}
       <button type="button" className="ghost-button" onClick={() => window.print()}>
         Print this page
       </button>

@@ -712,6 +712,89 @@ code {
   font-size: 1rem;
 }
 
+/* ---------- In-app report contents ---------- */
+
+.report-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.report-doc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-doc-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-doc-section-head h3,
+.report-doc-section-head h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.report-doc-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.report-doc-list li {
+  line-height: 1.5;
+}
+
+.report-doc-item-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-doc-reason {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+.report-doc-disclaimer {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.report-row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-missing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--ink-soft);
+}
+
+/* Only rendered while printing a single report. */
+.report-print-sheet {
+  display: none;
+}
+
 /* ---------- Section tabs (Discoveries / Doctor Visit) ---------- */
 
 .section-tabs {
@@ -2208,6 +2291,26 @@ code {
   .page-header-actions,
   .footer-note,
   .today-details-chevron {
+    display: none !important;
+  }
+
+  /* Printing one report: that sheet is the page, nothing else. */
+  body.printing-report .page-stack > *:not(.report-print-sheet) {
+    display: none !important;
+  }
+
+  body.printing-report .report-print-sheet {
+    display: block;
+  }
+
+  .report-doc {
+    border: none;
+    padding: 0;
+    gap: 16px;
+  }
+
+  .button-row,
+  .report-missing {
     display: none !important;
   }
 

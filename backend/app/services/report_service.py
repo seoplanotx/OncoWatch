@@ -202,10 +202,31 @@ def _append_appendix(story: list[Any], styles: Any, items: list[Finding]) -> Non
 
 
 APPOINTMENT_PREP_TOP_ITEMS = 6
+APPENDIX_LIMIT = 20
 
 
 def _trimmed_profile_rows(profile: PatientProfile) -> list[list[str]]:
     return [row for row in _profile_rows(profile) if row[0] != "Display name" and row[1] not in (None, "", "—")]
+
+
+def _appendix_items(findings: list[Finding], briefing: dict[str, Any], report_type: str) -> list[Finding]:
+    """Findings that land in the evidence appendix, in appendix order."""
+    appendix: list[Finding] = []
+    seen_ids: set[int] = set()
+
+    for section in briefing.get("sections", []):
+        for finding in section.get("items") or []:
+            if finding.id not in seen_ids:
+                appendix.append(finding)
+                seen_ids.add(finding.id)
+
+    if report_type == "full_review":
+        for finding in rank_findings_for_briefing(findings):
+            if finding.id not in seen_ids and len(appendix) < APPENDIX_LIMIT:
+                appendix.append(finding)
+                seen_ids.add(finding.id)
+
+    return appendix[:APPENDIX_LIMIT]
 
 
 def _prep_finding_status_line(finding: Finding) -> str:
@@ -226,6 +247,93 @@ def _prep_finding_status_line(finding: Finding) -> str:
         if recruitment_bucket:
             parts.append(f"Recruitment: {str(recruitment_bucket).replace('_', ' ')}")
     return " • ".join(parts)
+
+
+def _outline_item(finding: Finding) -> dict[str, Any]:
+    """One finding reduced to what the in-app report view renders.
+
+    Deliberately carries no identifying fields — the outline is persisted into
+    ``ReportExport.summary_json``, which must stay free of patient data.
+    """
+    first_reason = (finding.why_it_surfaced or "").split("\n")[0].strip()
+    return {
+        "id": finding.id,
+        "title": finding.title,
+        "source_name": finding.source_name,
+        "source_url": finding.source_url,
+        "identifier": finding.external_identifier or "",
+        "relevance_label": finding.relevance_label or "",
+        "status": finding.status,
+        "status_line": _prep_finding_status_line(finding),
+        "why_it_surfaced": first_reason or None,
+    }
+
+
+def build_report_outline(
+    profile: PatientProfile,
+    findings: list[Finding],
+    report_type: str,
+    *,
+    briefing: dict[str, Any],
+) -> dict[str, Any]:
+    """Describe what a report of this type contains.
+
+    Applies the same caps and ordering the PDF builders apply, so the in-app
+    view and the generated PDF cannot drift apart. Used both to preview a
+    report before it exists and to render one that already does.
+    """
+    questions = _deterministic_questions(profile, findings)
+    gaps = [
+        {
+            "label": blocker["label"],
+            "finding_count": blocker["finding_count"],
+            "examples": list(blocker.get("examples") or []),
+        }
+        for blocker in (briefing.get("blockers") or [])
+    ]
+
+    if report_type == "appointment_prep":
+        top_items = rank_findings_for_briefing(findings)[:APPOINTMENT_PREP_TOP_ITEMS]
+        sections = [
+            {
+                "key": "top_things_to_raise",
+                "title": "Top things to raise",
+                "description": "The highest-priority items from your latest check.",
+                "empty_message": "No monitored findings are stored for this profile yet.",
+                "count": len(top_items),
+                "items": [_outline_item(item) for item in top_items],
+            }
+        ]
+        appendix_count = 0
+    else:
+        sections = [
+            {
+                "key": section["key"],
+                "title": section["title"],
+                "description": section["description"],
+                "empty_message": section["empty_message"],
+                "count": section["count"],
+                "items": [_outline_item(item) for item in section.get("items") or []],
+            }
+            for section in briefing.get("sections") or []
+        ]
+        appendix_count = len(_appendix_items(findings, briefing, report_type))
+
+    return {
+        "report_type": report_type,
+        "report_title": _report_title(report_type),
+        "sections": sections,
+        "questions": questions,
+        "gaps": gaps,
+        "counts": {
+            "findings": len(findings),
+            "new": int(briefing.get("new_count") or 0),
+            "changed": int(briefing.get("changed_count") or 0),
+            "questions": len(questions),
+            "gaps": len(gaps),
+            "appendix": appendix_count,
+        },
+    }
 
 
 def build_appointment_prep_bytes(
@@ -326,44 +434,44 @@ def build_report_bytes(
     _append_briefing_overview(story, styles, briefing)
     _append_profile_snapshot(story, styles, profile)
 
-    appendix_items: list[Finding] = []
-    seen_ids: set[int] = set()
-
     for section in briefing.get("sections", []):
-        for finding in _append_section(story, styles, section):
-            if finding.id not in seen_ids:
-                appendix_items.append(finding)
-                seen_ids.add(finding.id)
+        _append_section(story, styles, section)
 
     _append_blockers(story, styles, briefing.get("blockers", []))
     story.append(Spacer(1, 8))
     _append_questions(story, styles, profile, findings)
 
-    if report_type == "full_review":
-        for finding in rank_findings_for_briefing(findings):
-            if finding.id not in seen_ids and len(appendix_items) < 20:
-                appendix_items.append(finding)
-                seen_ids.add(finding.id)
-
     story.append(Spacer(1, 8))
-    _append_appendix(story, styles, appendix_items[:20])
+    _append_appendix(story, styles, _appendix_items(findings, briefing, report_type))
 
     doc.build(story)
     return buffer.getvalue()
 
 
-def write_report(session: Session, *, profile: PatientProfile, findings: list[Finding], report_type: str) -> ReportExport:
+def _briefing_for(session: Session, *, profile: PatientProfile, findings: list[Finding], report_type: str) -> dict[str, Any]:
     latest_run = session.scalar(
         select(MonitoringRun)
         .where(MonitoringRun.profile_id == profile.id)
         .order_by(MonitoringRun.started_at.desc())
     )
-    briefing = build_briefing_snapshot(
+    return build_briefing_snapshot(
         findings,
         latest_run=latest_run,
         section_limit=6 if report_type == "daily_summary" else 8,
         blocker_limit=6,
     )
+
+
+def build_report_preview(
+    session: Session, *, profile: PatientProfile, findings: list[Finding], report_type: str
+) -> dict[str, Any]:
+    """The outline a report of this type would have, without rendering or storing anything."""
+    briefing = _briefing_for(session, profile=profile, findings=findings, report_type=report_type)
+    return build_report_outline(profile, findings, report_type, briefing=briefing)
+
+
+def write_report(session: Session, *, profile: PatientProfile, findings: list[Finding], report_type: str) -> ReportExport:
+    briefing = _briefing_for(session, profile=profile, findings=findings, report_type=report_type)
     report_bytes = build_report_bytes(profile, findings, report_type, briefing=briefing)
 
     paths = get_app_paths()
@@ -384,6 +492,9 @@ def write_report(session: Session, *, profile: PatientProfile, findings: list[Fi
         "report_title": _report_title(report_type),
         "report_type": report_type,
         "generated_at": utcnow().isoformat(),
+        # What this PDF actually contains, so the app can show the report
+        # without opening the file. Same no-identifying-data rule applies.
+        "outline": build_report_outline(profile, findings, report_type, briefing=briefing),
     }
 
     export = ReportExport(
@@ -421,6 +532,10 @@ def can_render_test_pdf() -> tuple[bool, str]:
         return (len(data) > 100, "PDF generation ready")
     except Exception as exc:
         return False, f"PDF generation failed: {exc}"
+
+
+def get_report(session: Session, report_id: int) -> ReportExport | None:
+    return session.get(ReportExport, report_id)
 
 
 def list_reports(session: Session) -> list[ReportExport]:

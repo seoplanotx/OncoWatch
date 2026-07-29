@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClinicianSummaryPage } from './ClinicianSummaryPage';
 import { api } from '../lib/api';
@@ -8,9 +9,26 @@ import type { ClinicianSummary } from '../lib/types';
 vi.mock('../lib/api', () => ({
   api: {
     getClinicianSummary: vi.fn(),
-    generateReport: vi.fn()
+    generateReport: vi.fn(),
+    downloadReport: vi.fn()
   }
 }));
+
+vi.mock('../lib/reportFile', () => ({
+  isDesktopShell: () => true,
+  openReportFile: vi.fn().mockResolvedValue(true),
+  saveReportCopy: vi.fn().mockResolvedValue('saved'),
+  downloadInBrowser: vi.fn(),
+  suggestedFileName: () => 'firstlight-appointment-prep-2026-06-21.pdf'
+}));
+
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <ClinicianSummaryPage />
+    </MemoryRouter>
+  );
+}
 
 const mockedApi = vi.mocked(api);
 
@@ -92,7 +110,7 @@ describe('ClinicianSummaryPage', () => {
   });
 
   it('renders the case snapshot, framing, trials and research', async () => {
-    render(<ClinicianSummaryPage />);
+    renderPage();
     expect(await screen.findByText('For your doctor')).toBeInTheDocument();
     expect(screen.getByText('Non-small cell lung cancer')).toBeInTheDocument();
     expect(screen.getByText(/1 trial and 1 research item/i)).toBeInTheDocument();
@@ -101,8 +119,8 @@ describe('ClinicianSummaryPage', () => {
     expect(screen.getByText('Is this trial a fit given my current therapy?')).toBeInTheDocument();
   });
 
-  it('generates an appointment prep sheet on demand', async () => {
-    render(<ClinicianSummaryPage />);
+  it('generates an appointment prep sheet and offers to open it right away', async () => {
+    renderPage();
     await screen.findByText('For your doctor');
 
     await userEvent.click(screen.getByRole('button', { name: /make appointment prep sheet/i }));
@@ -110,6 +128,8 @@ describe('ClinicianSummaryPage', () => {
     await waitFor(() =>
       expect(mockedApi.generateReport).toHaveBeenCalledWith({ report_type: 'appointment_prep' })
     );
-    expect(await screen.findByText(/appointment prep sheet generated locally/i)).toBeInTheDocument();
+    expect(await screen.findByText(/created on this computer/i)).toBeInTheDocument();
+    // The old flow dead-ended here with prose; the sheet must be reachable.
+    expect(screen.getByRole('button', { name: /open prep sheet/i })).toBeInTheDocument();
   });
 });

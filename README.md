@@ -40,7 +40,7 @@ Firstlight is the public version of what I built for her, so that no other famil
 - Plain-language interface by default, with an optional clinical-terms mode in Settings
 - Per-item triage: mark findings to discuss with the care team or set aside ones that are not relevant
 - Personalized daily briefing with a guided first run and friendly source status
-- Local PDF export with report history
+- Local PDF reports you can read in the app, print, open, or save a copy of, with report history
 - Local activity (audit) log plus export-my-data and delete-my-data controls
 - About / Support view with local storage paths and recovery steps
 
@@ -208,13 +208,19 @@ ONCOWATCH_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ONCOWATCH_ANTHROPIC_BASE_URL=https://api.anthropic.com
 ```
 
-## PDF export
+## Reports
 
-Two report types are included:
+Three report types are included:
 - **Daily Summary Report**
 - **Full Oncology Review Report**
+- **Appointment Prep Sheet** — one page, built to hand to a clinician
 
-Reports are generated locally and saved to the user’s app report directory. Each report includes:
+Reports are generated locally and saved to the user's app report directory.
+Before creating one, Firstlight shows exactly what will be in it; afterwards you
+can read the whole report in the app, open the PDF in your usual viewer, print
+it, or save a copy wherever you like. Nothing is uploaded.
+
+Each report includes:
 - patient profile snapshot
 - new or changed items
 - possible trial matches

@@ -13,5 +13,10 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-notification = "2"
+# Report files: open the PDF in the OS viewer, reveal it in Finder/Explorer,
+# and save a copy wherever the user picks.
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
